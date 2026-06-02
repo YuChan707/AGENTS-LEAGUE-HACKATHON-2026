@@ -9,6 +9,9 @@ Aqui es donde se encontraran la sespecificaciones de deployment de los contenedo
 Lo mejor es solo usar octopus para acceso y alamcenamiento de datos no para ningun otro componente extra
 
 ###  Data Ingestor
+Demographic Data:  Data Commons resource: https://datacommons.org/place/geoId/3651000
+Apps 
+
 Aqui es donde estaran los scripts para la ingestra de nuestros datos creados de forma artificial apartir de datos estadisticos de diferentese fuentes de informacion en donde se ordenaran y haran los perfiles de audiencia generalizado
 
 La "Audiencia" no son personas especcificas son grupos agrupudas por compartamientos estadisticos
