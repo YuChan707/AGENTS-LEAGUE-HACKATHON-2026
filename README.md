@@ -110,6 +110,149 @@ AGENTS-LEAGUE-HACKATHON-2026/
         └── copilot-manifest.json           ← M365 Copilot plugin stub
 
 ---
+
+## Requirements & How to Run
+
+### Prerequisites
+
+| Requirement | Version | Notes |
+|---|---|---|
+| Python | 3.10+ | Backend runtime |
+| Node.js | 18+ | Frontend runtime |
+| npm | 9+ | Comes with Node.js |
+| PostgreSQL | 14+ | Main relational database |
+| Docker & Docker Compose | Latest | For containerised services |
+| Azure account | — | Blob Storage + any Azure AI services |
+
+Python packages are listed in `requirements.txt`. Node packages are declared in `ui-onlooker/package.json`.
+
+---
+
+### 1. Clone and configure environment variables
+
+```bash
+git clone <repo-url>
+cd AGENTS-LEAGUE-HACKATHON-2026
+
+# Copy the safe template and fill in your secrets
+cp .env.example .env
+```
+
+Open `.env` and set every value marked `REQUIRED`. At minimum you need:
+
+```
+# Database
+DATABASE_URL=postgresql://user:password@localhost:5432/onlooker
+
+# Azure Blob Storage
+AZURE_STORAGE_CONNECTION_STRING=...
+
+# LLM (Llama / Azure OpenAI endpoint)
+LLM_API_KEY=...
+LLM_ENDPOINT=...
+
+# ChromaDB
+CHROMA_HOST=localhost
+CHROMA_PORT=8000
+```
+
+---
+
+### 2. Start backing services (Docker)
+
+```bash
+cd containers_env
+docker compose up -d
+```
+
+This starts PostgreSQL and ChromaDB locally. Confirm both containers are healthy:
+
+```bash
+docker compose ps
+```
+
+---
+
+### 3. Set up the Python backend
+
+```bash
+# From the repo root
+python -m venv venv
+
+# Activate
+# Windows:
+venv\Scripts\activate
+# macOS / Linux:
+source venv/bin/activate
+
+pip install -r requirements.txt
+```
+
+Seed the database with audience profiles (run once):
+
+```bash
+python -m data_ingestor.seed_database
+```
+
+Start the FastAPI server:
+
+```bash
+uvicorn backend.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+The API will be available at `http://localhost:8000`. Interactive docs at `http://localhost:8000/docs`.
+
+---
+
+### 4. Set up and run the frontend
+
+```bash
+cd ui-onlooker
+
+# Copy frontend env template
+cp .env.local.example .env.local   # if the file exists, otherwise create it
+```
+
+Add the backend URL to `ui-onlooker/.env.local`:
+
+```
+NEXT_PUBLIC_API_URL=http://localhost:8000
+NEXT_PUBLIC_WS_URL=ws://localhost:8000
+```
+
+Install dependencies and start the dev server:
+
+```bash
+npm install
+npm run dev
+```
+
+The UI will be available at `http://localhost:3000`.
+
+---
+
+### 5. Full stack at a glance
+
+```
+http://localhost:3000   ← Next.js frontend (OnLooker UI)
+http://localhost:8000   ← FastAPI backend  (REST + WebSocket)
+http://localhost:8001   ← ChromaDB         (vector store)
+postgresql://localhost:5432  ← PostgreSQL
+```
+
+---
+
+### Common issues
+
+| Problem | Fix |
+|---|---|
+| `Port 3000 already in use` | Another Next.js instance is running. Run `npx kill-port 3000` or use `npm run dev -- -p 3001` |
+| `DATABASE_URL not set` | Make sure `.env` is present in the repo root and the variable is filled in |
+| ChromaDB connection refused | Confirm Docker containers are running: `docker compose ps` |
+| `ModuleNotFoundError` on Python | Activate the virtual environment first (`venv\Scripts\activate`) |
+| Frontend shows blank page | Check browser console for `NEXT_PUBLIC_API_URL` errors; confirm the backend is running |
+
+---
 **ENG**
 **# AGENTS-LEAGUE-HACKATHON-2026
 
