@@ -1,0 +1,33 @@
+# Web framework
+fastapi
+uvicorn[standard]
+websockets
+
+# Database
+sqlalchemy[asyncio]
+asyncpg
+alembic
+aiosqlite
+
+# Vector database
+chromadb
+
+# Azure storage
+azure-storage-blob
+
+# AI / LLM
+semantic-kernel
+groq
+
+# Document generation
+python-pptx
+
+# Data processing
+pandas
+numpy
+httpx
+
+# Configuration
+pydantic
+pydantic-settings
+python-dotenv

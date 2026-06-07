@@ -28,6 +28,36 @@
 *.sql
 *.sqlite
 
+# Environment variables (never commit secrets) #
+################################################
+.env
+.env.local
+.env.*.local
+
+# Python virtual environment (never commit) #
+##############################################
+venv/
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# ChromaDB local storage (never commit) #
+##########################################
+chroma_data/
+
+# SQLite local database #
+##########################
+*.db
+*.sqlite3
+onlooker.db
+
+# Node / frontend #
+####################
+ui-onlooker/node_modules/
+ui-onlooker/.next/
+ui-onlooker/out/
+
 # OS generated files #
 ######################
 .DS_Store
