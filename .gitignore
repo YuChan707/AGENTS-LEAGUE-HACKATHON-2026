@@ -33,6 +33,7 @@
 .env
 .env.local
 .env.*.local
+.gitignore.env
 
 # Python virtual environment (never commit) #
 ##############################################
