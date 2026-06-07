@@ -1,0 +1,2 @@
+# Placeholder so the chroma_data/ directory exists in the repo.
+# ChromaDB's persistent files are written here at runtime and are gitignored.
