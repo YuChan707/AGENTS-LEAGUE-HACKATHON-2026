@@ -7,6 +7,7 @@ import DashboardView from "@/components/DashboardView";
 import ChatBoxMode from "@/components/ChatBoxMode";
 import AliveModeView from "@/components/AliveModeView";
 import { Monitor, User, Feather, Bot } from "@deemlol/next-icons";
+import { useStore, CoachingPayload, AudiencePayload, AgentEvent } from "@/lib/store";
 
 /* ── Logo ── */
 const LOGO_SRC =
@@ -21,6 +22,19 @@ export default function Page() {
   const [shareState, setShareState] = useState<"idle" | "active" | "paused" | "denied">("idle");
   const [chatActive, setChatActive] = useState(false);
   const switchMode = (next: Mode) => setMode(next);
+
+  const latestSpeech = useStore((s) => s.latestSpeech);
+  const latestAudience = useStore((s) => s.latestAudience);
+
+  const liveMetrics = {
+    attention: latestSpeech ? `${Math.round(latestSpeech.clarity_score * 100)}%` : "--",
+    mood: latestAudience?.reaction_type ?? "--",
+    liveAudience: latestAudience ? "1" : "--",
+    questions: latestAudience?.would_ask ? "1+" : "--",
+    complexity: latestSpeech
+      ? latestSpeech.pace_wpm > 160 ? "High" : latestSpeech.pace_wpm > 110 ? "Med" : "Low"
+      : "--",
+  };
 
   return (
     <div
@@ -216,7 +230,7 @@ export default function Page() {
                 <ChatBoxMode onSessionChange={(active) => setChatActive(active)} />
               </div>
               <div style={{ display: mode === "alive" ? "flex" : "none", flexDirection: "column", flex: 1 }}>
-                <AliveModeView onShareStatusChange={(s) => setShareState(s)} />
+                <AliveModeView metrics={liveMetrics} onShareStatusChange={(s) => setShareState(s)} />
               </div>
             </div>
           </>
@@ -392,7 +406,7 @@ function ModeCard({ active, icon, iconNode, label, sub, tooltip, tags, activeLab
   );
 }
 
-const AI_MESSAGES = [
+const FALLBACK_MESSAGES = [
   "The audience reacted positively to slide 4.",
   "Attention levels are high — continue at this pace.",
   "Some confusion detected around the third data point.",
@@ -401,8 +415,23 @@ const AI_MESSAGES = [
   "Body language in the room suggests active listening.",
 ];
 
+function eventToText(e: AgentEvent): string {
+  if (e.agent === "coaching") return (e.payload as CoachingPayload).tip;
+  if (e.agent === "audience") {
+    const p = e.payload as AudiencePayload;
+    return `${p.speaker} (${p.role}): "${p.internal_thought}"`;
+  }
+  return "";
+}
+
 function LiveAIPanel({ mode, isLive, isPaused = false }: { mode: Mode; isLive: boolean; isPaused?: boolean }) {
   const endRef = useRef<HTMLDivElement>(null);
+  const events = useStore((s) => s.events);
+  const liveMessages = events
+    .filter((e) => e.agent === "coaching" || e.agent === "audience")
+    .map(eventToText)
+    .filter(Boolean);
+  const messages = liveMessages.length > 0 ? liveMessages : FALLBACK_MESSAGES;
   const [elapsed, setElapsed] = useState(0);
   const isPausedRef = useRef(isPaused);
   useEffect(() => { isPausedRef.current = isPaused; }, [isPaused]);
@@ -474,7 +503,7 @@ function LiveAIPanel({ mode, isLive, isPaused = false }: { mode: Mode; isLive: b
             className="overflow-y-auto no-scrollbar flex flex-col gap-[var(--sp-sm)]"
             style={{ maxHeight: 220 }}
           >
-            {AI_MESSAGES.map((text, i) => (
+            {messages.map((text: string, i: number) => (
               <div key={i} className="flex items-start gap-[var(--sp-sm)]">
                 <div
                   className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0"

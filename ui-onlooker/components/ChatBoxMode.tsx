@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect } from "react";
 import { User, BotSquare, File as FileIcon, Bot } from "@deemlol/next-icons";
+import { useStore, AgentEvent, AudiencePayload, CoachingPayload } from "@/lib/store";
+import { useWebSocket } from "@/lib/useWebSocket";
 
 interface Message {
   id: number;
@@ -11,6 +13,17 @@ interface Message {
 
 interface ChatBoxModeProps {
   onSessionChange?: (active: boolean) => void;
+}
+
+function formatEvent(event: AgentEvent): string {
+  if (event.agent === "coaching") {
+    return (event.payload as CoachingPayload).tip;
+  }
+  if (event.agent === "audience") {
+    const p = event.payload as AudiencePayload;
+    return `${p.speaker} (${p.role}) — ${p.body_language}. Internal thought: "${p.internal_thought}" Might ask: "${p.would_ask}"`;
+  }
+  return "";
 }
 
 export default function ChatBoxMode({ onSessionChange }: ChatBoxModeProps) {
@@ -26,6 +39,31 @@ export default function ChatBoxMode({ onSessionChange }: ChatBoxModeProps) {
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const lastEventIdRef = useRef(0);
+
+  const events = useStore((s) => s.events);
+  const { connect, sendTranscript } = useWebSocket();
+
+  // When new coaching/audience events arrive, add them as bot messages
+  useEffect(() => {
+    const newEvents = events.filter(
+      (e) =>
+        e.id > lastEventIdRef.current &&
+        (e.agent === "coaching" || e.agent === "audience")
+    );
+    if (newEvents.length === 0) return;
+
+    lastEventIdRef.current = events[events.length - 1]?.id ?? lastEventIdRef.current;
+    setBotTyping(false);
+
+    const botMessages: Message[] = newEvents
+      .map((e) => ({ id: e.id * 10000 + Date.now(), role: "bot" as const, text: formatEvent(e) }))
+      .filter((m) => m.text.length > 0);
+
+    if (botMessages.length > 0) {
+      setMessages((prev) => [...prev, ...botMessages]);
+    }
+  }, [events]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -41,13 +79,13 @@ export default function ChatBoxMode({ onSessionChange }: ChatBoxModeProps) {
     setInput("");
     setBotTyping(true);
 
-    setTimeout(() => {
-      setBotTyping(false);
-      setMessages((prev) => [
-        ...prev,
-        { id: Date.now() + 1, role: "bot", text: "Hi." },
-      ]);
-    }, 800);
+    // Connect WS (no-op if already open) then stream transcript to agents
+    connect();
+    sendTranscript(text);
+
+    // Safety fallback: if no event arrives in 8 s, clear typing indicator
+    const timeout = setTimeout(() => setBotTyping(false), 8000);
+    return () => clearTimeout(timeout);
   };
 
   const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -97,7 +135,6 @@ export default function ChatBoxMode({ onSessionChange }: ChatBoxModeProps) {
             Chat Box — AI Audience Feedback
           </span>
         </div>
-        {/* File type tags */}
         <div className="flex gap-[var(--sp-xs)]">
           {[".pptx", ".docx", ".pdf"].map((ext) => (
             <span
@@ -130,7 +167,6 @@ export default function ChatBoxMode({ onSessionChange }: ChatBoxModeProps) {
               msg.role === "user" ? "flex-row-reverse" : "flex-row"
             }`}
           >
-            {/* Avatar */}
             <div
               className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden"
               style={{
@@ -151,7 +187,6 @@ export default function ChatBoxMode({ onSessionChange }: ChatBoxModeProps) {
               )}
             </div>
 
-            {/* Bubble */}
             <div
               className="max-w-[72%] px-[var(--sp-md)] py-[var(--sp-sm)] rounded-lg"
               style={{
@@ -177,7 +212,6 @@ export default function ChatBoxMode({ onSessionChange }: ChatBoxModeProps) {
           </div>
         ))}
 
-        {/* Typing indicator */}
         {botTyping && (
           <div className="flex items-end gap-[var(--sp-sm)]">
             <div
@@ -212,7 +246,7 @@ export default function ChatBoxMode({ onSessionChange }: ChatBoxModeProps) {
         >
           {attachedFiles.map((f, i) => (
             <div
-              key={i}
+              key={`${f.name}-${f.size}`}
               className="flex items-center gap-[var(--sp-xs)] rounded border px-[var(--sp-xs)] py-[2px]"
               style={{
                 background: "var(--color-surface-bright)",
@@ -245,7 +279,6 @@ export default function ChatBoxMode({ onSessionChange }: ChatBoxModeProps) {
         className="px-[var(--sp-md)] py-[var(--sp-sm)] border-t flex items-center gap-[var(--sp-sm)] bg-white"
         style={{ borderColor: "var(--color-outline-variant)" }}
       >
-        {/* Hidden file input */}
         <input
           ref={fileInputRef}
           type="file"
@@ -255,7 +288,6 @@ export default function ChatBoxMode({ onSessionChange }: ChatBoxModeProps) {
           onChange={handleFileSelect}
         />
 
-        {/* Attach button */}
         <button
           onClick={() => fileInputRef.current?.click()}
           disabled={atLimit}
@@ -266,7 +298,6 @@ export default function ChatBoxMode({ onSessionChange }: ChatBoxModeProps) {
           <FileIcon size={20} color={atLimit ? "#c0c7d4" : "#0078d4"} strokeWidth={2} />
         </button>
 
-        {/* Text input */}
         <div className="fl-input flex-1">
           <input
             type="text"
@@ -280,7 +311,6 @@ export default function ChatBoxMode({ onSessionChange }: ChatBoxModeProps) {
           />
         </div>
 
-        {/* Send button */}
         <button
           onClick={sendMessage}
           disabled={!input.trim() || botTyping}

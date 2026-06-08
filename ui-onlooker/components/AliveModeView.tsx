@@ -2,14 +2,23 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Monitor, RotateCcw, Pause, Play, PlayCircle } from "@deemlol/next-icons";
+import { useStore, CoachingPayload, AudiencePayload, AgentEvent } from "@/lib/store";
+import { useWebSocket } from "@/lib/useWebSocket";
 
-const LIVE_FEED = [
-  { color: "var(--color-btn-action)",   text: "Audience engagement is peaking. Keep this pace." },
-  { color: "var(--color-on-surface)",   text: "Someone mentioned the data source is unclear." },
-  { color: "var(--color-secondary)",    text: "Attention dropping in the front rows. Use a gesture." },
-  { color: "var(--color-btn-action)",   text: "Great point about the methodology!" },
-  { color: "var(--color-btn-action)",   text: "Audience engagement is peaking. Keep this pace." },
+const FALLBACK_FEED = [
+  { color: "var(--color-btn-action)", text: "Audience engagement is peaking. Keep this pace." },
+  { color: "var(--color-on-surface)", text: "Someone mentioned the data source is unclear." },
+  { color: "var(--color-secondary)",  text: "Attention dropping in the front rows. Use a gesture." },
+  { color: "var(--color-btn-action)", text: "Great point about the methodology!" },
 ];
+
+function toFeedItem(e: AgentEvent): { color: string; text: string } {
+  if (e.agent === "coaching") {
+    return { color: "var(--color-btn-action)", text: (e.payload as CoachingPayload).tip };
+  }
+  const p = e.payload as AudiencePayload;
+  return { color: "var(--color-on-surface)", text: `${p.speaker}: "${p.internal_thought}"` };
+}
 
 export interface LiveMetrics {
   attention: string;
@@ -36,6 +45,15 @@ interface AliveModeViewProps {
 export default function AliveModeView({ onShareError, onShareStatusChange, metrics }: AliveModeViewProps) {
   const m: LiveMetrics = { ...DEFAULT_METRICS, ...metrics };
   const [shareStatus, setShareStatus] = useState<"idle" | "active" | "denied">("idle");
+
+  const events = useStore((s) => s.events);
+  const wsRef = useRef(useWebSocket());
+
+  const liveFeed = events
+    .filter((e) => e.agent === "coaching" || e.agent === "audience")
+    .slice(-4)
+    .map(toFeedItem);
+  const feed = liveFeed.length > 0 ? liveFeed : FALLBACK_FEED;
   const streamRef = useRef<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const hasRequestedRef = useRef(false);
@@ -51,12 +69,14 @@ export default function AliveModeView({ onShareError, onShareStatusChange, metri
       if (videoRef.current) videoRef.current.srcObject = stream;
       setShareStatus("active");
       onShareStatusChange?.("active");
+      wsRef.current.connect();
 
       stream.getTracks()[0].addEventListener("ended", () => {
         setShareStatus("idle");
         onShareStatusChange?.("idle");
         streamRef.current = null;
         if (videoRef.current) videoRef.current.srcObject = null;
+        wsRef.current.disconnect();
       });
     } catch {
       setShareStatus("denied");
@@ -103,6 +123,7 @@ export default function AliveModeView({ onShareError, onShareStatusChange, metri
     setShareStatus("idle");
     setRecordPaused(false);
     onShareStatusChange?.("idle");
+    wsRef.current.disconnect();
   }, [onShareStatusChange]);
 
   return (
@@ -187,7 +208,7 @@ export default function AliveModeView({ onShareError, onShareStatusChange, metri
               </div>
               <div className="overflow-hidden h-6 flex-1">
                 <div className="scroll-feed flex flex-col gap-2">
-                  {[...LIVE_FEED, ...LIVE_FEED].map((item, i) => (
+                  {[...feed, ...feed].map((item, i) => (
                     <p
                       key={i}
                       style={{ fontSize: "var(--text-body)", fontWeight: 500, color: item.color, whiteSpace: "nowrap" }}
