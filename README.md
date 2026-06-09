@@ -7,7 +7,7 @@ Base Prototype File Arquitecture
 ---
 ## Folder structure ##
 
-AGENTS-LEAGUE-HACKATHON-2026/
+AGENTS-LEAGUE-HACKATHON-2026/ 
 │
 ├── .env                                    ← environment variables (never commit)
 ├── .env.example                            ← safe template to commit
