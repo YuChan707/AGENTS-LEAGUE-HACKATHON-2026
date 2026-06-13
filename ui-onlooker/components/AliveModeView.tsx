@@ -1,8 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Monitor, RotateCcw, Pause, Play, PlayCircle } from "@deemlol/next-icons";
-import { useStore, CoachingPayload, AudiencePayload, AgentEvent } from "@/lib/store";
+import { Monitor, RotateCcw, Pause, Play, CirclePlay as PlayCircle } from "lucide-react";
+import { useStore, CoachingPayload, AudiencePayload, VisualPayload, AgentEvent } from "@/lib/store";
 import { useWebSocket } from "@/lib/useWebSocket";
 
 const FALLBACK_FEED = [
@@ -15,6 +15,9 @@ const FALLBACK_FEED = [
 function toFeedItem(e: AgentEvent): { color: string; text: string } {
   if (e.agent === "coaching") {
     return { color: "var(--color-btn-action)", text: (e.payload as CoachingPayload).tip };
+  }
+  if (e.agent === "visual") {
+    return { color: "var(--color-secondary)", text: `👁 ${(e.payload as VisualPayload).tip}` };
   }
   const p = e.payload as AudiencePayload;
   return { color: "var(--color-on-surface)", text: `${p.speaker}: "${p.internal_thought}"` };
@@ -50,7 +53,7 @@ export default function AliveModeView({ onShareError, onShareStatusChange, metri
   const wsRef = useRef(useWebSocket());
 
   const liveFeed = events
-    .filter((e) => e.agent === "coaching" || e.agent === "audience")
+    .filter((e) => e.agent === "coaching" || e.agent === "audience" || e.agent === "visual")
     .slice(-4)
     .map(toFeedItem);
   const feed = liveFeed.length > 0 ? liveFeed : FALLBACK_FEED;
@@ -58,6 +61,36 @@ export default function AliveModeView({ onShareError, onShareStatusChange, metri
   const videoRef = useRef<HTMLVideoElement>(null);
   const hasRequestedRef = useRef(false);
   const [recordPaused, setRecordPaused] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const recordPausedRef = useRef(false);
+  useEffect(() => { recordPausedRef.current = recordPaused; }, [recordPaused]);
+
+  // REC elapsed timer — ticks while active; reset runs in cleanup so it fires when shareStatus leaves "active"
+  useEffect(() => {
+    if (shareStatus !== "active") return;
+    const id = setInterval(() => {
+      if (!recordPausedRef.current) setElapsed((s) => s + 1);
+    }, 1000);
+    return () => { clearInterval(id); setElapsed(0); };
+  }, [shareStatus]);
+
+  // Capture a video frame every 8 s and send it to the vision agent
+  useEffect(() => {
+    if (shareStatus !== "active") return;
+    const canvas = document.createElement("canvas");
+    const ctx2d = canvas.getContext("2d");
+    const capture = () => {
+      const video = videoRef.current;
+      if (!video || video.readyState < 2 || !ctx2d) return;
+      canvas.width = Math.min(video.videoWidth, 1280);
+      canvas.height = Math.round(canvas.width * (video.videoHeight / Math.max(video.videoWidth, 1)));
+      ctx2d.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const b64 = canvas.toDataURL("image/jpeg", 0.6).split(",")[1];
+      if (b64) wsRef.current.sendFrame(b64);
+    };
+    const id = setInterval(capture, 8000);
+    return () => clearInterval(id);
+  }, [shareStatus]);
 
   const requestShare = useCallback(async () => {
     try {
@@ -159,16 +192,35 @@ export default function AliveModeView({ onShareError, onShareStatusChange, metri
             </span>
           </div>
           <div className="flex items-center gap-[var(--sp-sm)]">
+            {/* LIVE / OFFLINE badge — green when sharing, red otherwise */}
             <div
               className="flex items-center gap-[var(--sp-xs)] px-[var(--sp-sm)] py-[var(--sp-xs)] rounded"
-              style={{ background: "rgba(186,26,26,0.1)", color: "var(--color-error)" }}
+              style={{
+                background: shareStatus === "active" ? "rgba(16,124,16,0.1)" : "rgba(186,26,26,0.08)",
+                color: shareStatus === "active" ? "#107c10" : "var(--color-error)",
+              }}
             >
               <div
-                className="w-2 h-2 rounded-full animate-pulse"
-                style={{ background: "var(--color-error)" }}
+                className={`w-2 h-2 rounded-full ${shareStatus === "active" ? "animate-pulse" : ""}`}
+                style={{ background: shareStatus === "active" ? "#107c10" : "var(--color-error)" }}
               />
-              <span style={{ fontSize: 10, fontWeight: 700 }}>LIVE</span>
+              <span style={{ fontSize: 10, fontWeight: 700 }}>
+                {shareStatus === "active" ? "LIVE" : "OFFLINE"}
+              </span>
             </div>
+
+            {/* REC timer — only when active or paused */}
+            {(shareStatus === "active" || recordPaused) && (
+              <span
+                className="border rounded px-[var(--sp-xs)]"
+                style={{ fontSize: 10, fontWeight: 600, color: "var(--color-on-surface-variant)", borderColor: "var(--color-outline-variant)" }}
+              >
+                REC {String(Math.floor(elapsed / 3600)).padStart(2, "0")}:
+                    {String(Math.floor((elapsed % 3600) / 60)).padStart(2, "0")}:
+                    {String(elapsed % 60).padStart(2, "0")}
+              </span>
+            )}
+
             <span
               className="material-symbols-outlined cursor-pointer transition-colors"
               style={{ color: "var(--color-on-surface-variant)", fontSize: 20 }}

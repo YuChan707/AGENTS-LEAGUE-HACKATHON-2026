@@ -1,5 +1,4 @@
-﻿import re
-import time
+import re
 
 FILLERS = {
     "um", "uh", "like", "you know", "basically",

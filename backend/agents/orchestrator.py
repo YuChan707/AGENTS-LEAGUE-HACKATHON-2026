@@ -1,10 +1,11 @@
-﻿import asyncio
+import asyncio
 import time
 from dataclasses import dataclass, field
 from agents.speech import analyze_speech
 from agents.audience import simulate_audience
 from agents.coaching import get_coaching_tip
 from agents.cultural import check_cultural_fit
+from services.chroma_service import chroma
 
 @dataclass
 class SessionContext:
@@ -12,6 +13,8 @@ class SessionContext:
     persona: str = "investor"
     region: str = "us"
     focus_area: str = "finance"
+    environment: str = "professional"
+    complexity: str = "medium"
     last_tip: str = "none"
     last_reaction: str = "neutral"
     start_time: float = field(default_factory=time.time)
@@ -29,13 +32,17 @@ class Orchestrator:
         session_id: str,
         persona: str,
         region: str,
-        focus_area: str
+        focus_area: str,
+        environment: str = "professional",
+        complexity: str = "medium",
     ):
         self.context = SessionContext(
             session_id=session_id,
             persona=persona,
             region=region,
-            focus_area=focus_area
+            focus_area=focus_area,
+            environment=environment,
+            complexity=complexity,
         )
 
     async def process(self, text: str):
@@ -43,6 +50,20 @@ class Orchestrator:
             return
 
         ctx = self.context
+        words = text.strip().split()
+
+        # Guard: too little text to feed to AI agents
+        if len(words) < 5:
+            yield {
+                "agent": "coaching",
+                "type": "coaching",
+                "session_id": ctx.session_id,
+                "payload": {
+                    "tip": "Lack of information — keep speaking to receive live coaching",
+                    "error": "insufficient_input"
+                }
+            }
+            return
 
         # Speech — pure Python, runs first and fast
         speech_event = analyze_speech(text, ctx.elapsed())
@@ -52,12 +73,15 @@ class Orchestrator:
         scores = speech_event["payload"]
         ctx.word_count += scores["word_count"]
 
+        # Query ChromaDB for cultural norms before running cultural agent
+        norms = chroma.query(ctx.region, ctx.persona, ctx.focus_area, text)
+
         # Audience + Cultural run in parallel
         audience_task = asyncio.create_task(
-            simulate_audience(text, ctx.persona, ctx.focus_area)
+            simulate_audience(text, ctx.persona, ctx.focus_area, ctx.environment, ctx.complexity)
         )
         cultural_task = asyncio.create_task(
-            check_cultural_fit(text, ctx.region, ctx.persona, ctx.focus_area)
+            check_cultural_fit(text, ctx.region, ctx.persona, ctx.focus_area, norms)
         )
 
         audience_event, cultural_event = await asyncio.gather(
@@ -74,7 +98,7 @@ class Orchestrator:
 
         # Coaching runs last — uses speech + audience results
         coaching_event = await get_coaching_tip(
-            scores, ctx.last_reaction, ctx.last_tip
+            scores, ctx.last_reaction, ctx.last_tip, ctx.environment, ctx.complexity
         )
         coaching_event["session_id"] = ctx.session_id
         ctx.last_tip = coaching_event["payload"].get("tip", "none")

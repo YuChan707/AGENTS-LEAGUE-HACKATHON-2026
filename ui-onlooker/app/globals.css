@@ -5,8 +5,6 @@
 
 /* ============================================================
    FLUENT PRECISION – CSS DESIGN TOKENS
-   Every color, spacing value, radius, shadow, and button style
-   is defined here as a named CSS variable.
    ============================================================ */
 
 :root {
@@ -134,7 +132,6 @@
   --ring:               var(--color-primary);
   --radius:             4px;
 
-  /* Sidebar (keep shadcn happy) */
   --sidebar:                    var(--color-surface-low);
   --sidebar-foreground:         var(--color-on-surface);
   --sidebar-primary:            var(--color-btn-action);
@@ -150,13 +147,10 @@
   --chart-5: #2f3130;
 }
 
-/* ── Tailwind v4 @theme mapping ── */
 @theme inline {
   --color-background:            var(--background);
   --color-foreground:            var(--foreground);
   --font-sans:                   var(--font-body);
-
-  /* Shadcn standard tokens */
   --color-card:                  var(--card);
   --color-card-foreground:       var(--card-foreground);
   --color-popover:               var(--popover);
@@ -177,8 +171,6 @@
   --radius-md:  var(--radius);
   --radius-lg:  calc(var(--radius) * 2);
   --radius-xl:  calc(var(--radius) * 3);
-
-  /* Fluent custom utilities */
   --color-fl-blue:               var(--color-btn-action);
   --color-fl-primary:            var(--color-primary);
   --color-fl-surface:            var(--color-surface);
@@ -198,7 +190,6 @@
   --color-fl-inverse-on-surface: var(--color-inverse-on-surface);
 }
 
-/* ── Base styles ── */
 @layer base {
   * {
     box-sizing: border-box;
@@ -212,11 +203,6 @@
   }
 }
 
-/* ============================================================
-   FLUENT COMPONENT UTILITIES
-   ============================================================ */
-
-/* Fluent underline input field */
 .fl-input {
   position: relative;
   padding-bottom: 2px;
@@ -236,14 +222,12 @@
   background-color: var(--color-primary);
 }
 
-/* Fluent card (white surface with elevation shadow) */
 .fl-card {
   background: var(--color-surface-bright);
   border-radius: var(--br-default);
   box-shadow: var(--shadow-card);
 }
 
-/* Primary action button */
 .fl-btn-primary {
   background-color: var(--btn-primary-bg);
   color: var(--btn-primary-text);
@@ -259,20 +243,17 @@
   transform: scale(0.98);
 }
 
-/* Active nav pill (blue left border + bottom border) */
 .fl-nav-active {
   color: var(--color-btn-action);
   font-weight: 600;
   border-bottom: 2px solid var(--color-btn-action);
 }
 
-/* Active mode card (top blue border + shadow) */
 .fl-mode-active {
   border-top: 3px solid var(--color-btn-action);
   box-shadow: var(--shadow-card);
 }
 
-/* ── Animations ── */
 .dot-pulse {
   animation: dotPulse 1.4s infinite ease-in-out both;
 }
@@ -293,6 +274,5 @@
   animation: scrollUp 20s linear infinite;
 }
 
-/* Hide scrollbar */
 .no-scrollbar::-webkit-scrollbar { display: none; }
 .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }

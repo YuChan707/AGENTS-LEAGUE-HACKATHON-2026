@@ -7,7 +7,6 @@ from sqlalchemy.orm import declarative_base, sessionmaker
 from sqlalchemy.pool import StaticPool
 from dotenv import load_dotenv
 
-# Explicitly resolve .env from project root regardless of working directory
 _env_path = Path(__file__).parent.parent.parent / ".env"
 load_dotenv(_env_path, override=True)
 

@@ -1,4 +1,4 @@
-﻿import asyncio
+import asyncio
 from datetime import datetime
 from models.database import AsyncSessionLocal, IngestionEventModel, AnalyticModel
 

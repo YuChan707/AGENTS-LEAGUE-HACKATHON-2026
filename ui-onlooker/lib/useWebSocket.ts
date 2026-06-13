@@ -71,10 +71,15 @@ export function useWebSocket() {
     }
   }, []);
 
-  // Cleanup on unmount (only closes if the component that initiated it unmounts)
+  const sendFrame = useCallback((imageBase64: string) => {
+    if (_ws?.readyState === WebSocket.OPEN) {
+      _ws.send(JSON.stringify({ type: "video_frame", image_base64: imageBase64 }));
+    }
+  }, []);
+
   useEffect(() => {
     return () => { /* intentionally leave singleton alive across component mounts */ };
   }, []);
 
-  return { connect, disconnect, sendTranscript };
+  return { connect, disconnect, sendTranscript, sendFrame };
 }

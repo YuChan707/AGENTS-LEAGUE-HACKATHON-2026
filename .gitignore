@@ -6,9 +6,23 @@
 *.exe
 *.o
 *.so
-*.venv
-*.vscode
-*.idea
+
+# Python #
+##########
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editors / virtualenv #
+########################
+.venv/
+venv/
+.idea/
+.vscode/
+
 # Packages #
 ############
 # it's better to unpack these files and commit the raw source
@@ -25,8 +39,29 @@
 # Logs and databases #
 ######################
 *.log
-*.sql
 *.sqlite
+*.sqlite3
+# Ignore ad-hoc SQL dumps, but keep versioned schema/seed under postgresql-db/
+*.sql
+!containers_env/postgresql-db/*.sql
+
+# Node / Next.js (frontend) #
+#############################
+node_modules/
+.next/
+out/
+next-env.d.ts
+
+# Env files #
+#############
+.env
+.env.local
+.env.*.local
+
+# ChromaDB local persistent storage (keep the dir, ignore its data) #
+####################################################################
+chroma_data/*
+!chroma_data/.gitkeep
 
 # Environment variables (never commit secrets) #
 ################################################

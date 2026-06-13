@@ -1,0 +1,11 @@
+{
+  "$schema": "https://developer.microsoft.com/json-schemas/copilot/plugin/v2.1/schema.json",
+  "schema_version": "v2.1",
+  "name_for_human": "OnLooker",
+  "description_for_human": "Real-time presentation coaching with simulated audiences.",
+  "description_for_model": "Stub M365 Copilot plugin manifest for OnLooker.",
+  "contact_email": "team@onlooker.example",
+  "namespace": "onlooker",
+  "functions": [],
+  "runtimes": []
+}

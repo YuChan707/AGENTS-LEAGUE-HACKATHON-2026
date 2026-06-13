@@ -69,8 +69,8 @@ export default function ProjectSettings({
     const region = toRegion(location);
     const focusArea = toFocusArea(area);
 
-    // Update store config immediately so WS init message uses these values
-    setSessionConfig({ personaType, region, focusArea });
+    // Update store config immediately so WS init message and REST calls use these values
+    setSessionConfig({ personaType, region, focusArea, environment, complexity });
 
     setLoading(true);
     try {

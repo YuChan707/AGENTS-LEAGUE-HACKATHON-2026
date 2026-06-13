@@ -1,4 +1,4 @@
-﻿import os, sys
+import os, sys
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,6 +12,8 @@ from services.chroma_service import chroma
 from routes.health import router as health_router
 from routes.session import router as session_router
 from routes.stream import router as stream_router
+from routes.analyze import router as analyze_router
+from routes.document import router as document_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -27,3 +29,5 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 app.include_router(health_router)
 app.include_router(session_router)
 app.include_router(stream_router)
+app.include_router(analyze_router)
+app.include_router(document_router)

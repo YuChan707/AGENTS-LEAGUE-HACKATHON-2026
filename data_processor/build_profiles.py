@@ -1,4 +1,4 @@
-﻿import asyncio, sys, os
+import asyncio, sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 from data_processor.fetch_data_commons import fetch_place_statistics
 

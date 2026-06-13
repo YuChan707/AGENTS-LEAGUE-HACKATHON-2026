@@ -1,4 +1,4 @@
-﻿import chromadb
+import chromadb
 from chromadb.config import Settings
 
 class ChromaService:

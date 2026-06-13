@@ -21,6 +21,9 @@ groq
 
 # Document generation
 python-pptx
+python-docx
+pypdf
+python-multipart
 
 # Data processing
 pandas

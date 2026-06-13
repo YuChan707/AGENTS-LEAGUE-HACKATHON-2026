@@ -1,6 +1,7 @@
-﻿import uuid
+import uuid
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 from agents.orchestrator import Orchestrator
+from agents.vision import analyze_frame
 from services.ingestion_service import ingestion_service
 
 router = APIRouter(tags=["stream"])
@@ -35,10 +36,28 @@ async def stream(websocket: WebSocket):
                     await ingestion_service.ingest(event)
                     await websocket.send_json(event)
 
+            elif data.get("type") == "video_frame":
+                image_b64 = data.get("image_base64", "").strip()
+                if image_b64 and orchestrator.context:
+                    ctx = orchestrator.context
+                    visual_event = await analyze_frame(
+                        image_b64,
+                        ctx.persona,
+                        ctx.focus_area,
+                        ctx.environment,
+                        ctx.complexity,
+                    )
+                    visual_event["session_id"] = ctx.session_id
+                    await websocket.send_json(visual_event)
+
     except WebSocketDisconnect:
         pass
     except Exception as e:
         try:
-            await websocket.send_json({"type": "error", "message": str(e)})
+            await websocket.send_json({
+                "type": "error",
+                "agent": "system",
+                "message": str(e)
+            })
         except Exception:
             pass

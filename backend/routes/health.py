@@ -1,4 +1,3 @@
-
 from fastapi import APIRouter
 from sqlalchemy import text
 from models.database import AsyncSessionLocal

@@ -1,4 +1,4 @@
-﻿import os
+import os
 from datetime import datetime
 from dotenv import load_dotenv
 
@@ -11,7 +11,7 @@ class BlobStorageService:
         if not self._enabled:
             print("WARNING: Azure Blob Storage not configured — file upload disabled")
             return
-        from azure.storage.blobs import BlobServiceClient, ContentSettings
+        from azure.storage.blob import BlobServiceClient, ContentSettings
         self._ContentSettings = ContentSettings
         container = os.getenv("AZURE_BLOB_CONTAINER", "onlooker-reports")
         self._client = BlobServiceClient.from_connection_string(conn_str)

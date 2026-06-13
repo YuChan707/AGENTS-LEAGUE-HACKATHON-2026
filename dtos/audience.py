@@ -1,5 +1,4 @@
-﻿from pydantic import BaseModel
-from uuid import UUID
+from pydantic import BaseModel
 from typing import Any
 
 class AudienceProfile(BaseModel):

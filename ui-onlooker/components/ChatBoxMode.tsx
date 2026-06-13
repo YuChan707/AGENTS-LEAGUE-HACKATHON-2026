@@ -1,9 +1,12 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { User, BotSquare, File as FileIcon, Bot } from "@deemlol/next-icons";
+import { User, BotMessageSquare as BotSquare, File as FileIcon, Bot } from "lucide-react";
 import { useStore, AgentEvent, AudiencePayload, CoachingPayload } from "@/lib/store";
-import { useWebSocket } from "@/lib/useWebSocket";
+
+const API_BASE =
+  (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL) ||
+  "http://localhost:8000";
 
 interface Message {
   id: number;
@@ -26,7 +29,7 @@ function formatEvent(event: AgentEvent): string {
   return "";
 }
 
-export default function ChatBoxMode({ onSessionChange }: ChatBoxModeProps) {
+export default function ChatBoxMode({ onSessionChange }: Readonly<ChatBoxModeProps>) {
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 0,
@@ -39,53 +42,146 @@ export default function ChatBoxMode({ onSessionChange }: ChatBoxModeProps) {
   const [attachedFiles, setAttachedFiles] = useState<File[]>([]);
   const bottomRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const lastEventIdRef = useRef(0);
 
-  const events = useStore((s) => s.events);
-  const { connect, sendTranscript } = useWebSocket();
-
-  // When new coaching/audience events arrive, add them as bot messages
-  useEffect(() => {
-    const newEvents = events.filter(
-      (e) =>
-        e.id > lastEventIdRef.current &&
-        (e.agent === "coaching" || e.agent === "audience")
-    );
-    if (newEvents.length === 0) return;
-
-    lastEventIdRef.current = events[events.length - 1]?.id ?? lastEventIdRef.current;
-    setBotTyping(false);
-
-    const botMessages: Message[] = newEvents
-      .map((e) => ({ id: e.id * 10000 + Date.now(), role: "bot" as const, text: formatEvent(e) }))
-      .filter((m) => m.text.length > 0);
-
-    if (botMessages.length > 0) {
-      setMessages((prev) => [...prev, ...botMessages]);
-    }
-  }, [events]);
+  const { sessionId, sessionConfig, addEvent } = useStore();
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, botTyping]);
 
+  /** Call POST /analyze/chunk and push agent events into the chat + store. */
+  async function analyzeText(text: string) {
+    setBotTyping(true);
+    onSessionChange?.(true);
+
+    try {
+      const res = await fetch(`${API_BASE}/analyze/chunk`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          session_id: sessionId ?? "chat",
+          persona_type: sessionConfig.personaType,
+          region: sessionConfig.region,
+          focus_area: sessionConfig.focusArea,
+          environment: sessionConfig.environment,
+          complexity: sessionConfig.complexity,
+        }),
+      });
+
+      if (!res.ok) throw new Error(`Backend error ${res.status}`);
+
+      const data = await res.json() as { events: AgentEvent[] };
+
+      const botMessages: Message[] = [];
+      for (const event of data.events) {
+        addEvent(event.agent, event.payload);
+        const text = formatEvent(event);
+        if (text) {
+          botMessages.push({ id: Date.now() + Math.random(), role: "bot", text });
+        }
+      }
+      if (botMessages.length > 0) {
+        setMessages((prev) => [...prev, ...botMessages]);
+      }
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now(),
+          role: "bot",
+          text: "⚠️ Could not reach the backend. Make sure it is running on port 8000.",
+        },
+      ]);
+    } finally {
+      setBotTyping(false);
+    }
+  }
+
+  /** Upload file to POST /document/upload, extract text, then analyze it. */
+  async function uploadAndAnalyze(file: File) {
+    setBotTyping(true);
+    onSessionChange?.(true);
+
+    setMessages((prev) => [
+      ...prev,
+      { id: Date.now(), role: "bot", text: `Reading "${file.name}"…` },
+    ]);
+
+    try {
+      const form = new FormData();
+      form.append("file", file);
+      form.append("session_id", sessionId ?? "chat");
+      form.append("persona_type", sessionConfig.personaType);
+      form.append("region", sessionConfig.region);
+      form.append("focus_area", sessionConfig.focusArea);
+      form.append("environment", sessionConfig.environment);
+      form.append("complexity", sessionConfig.complexity);
+      form.append("analyze", "true");
+
+      const res = await fetch(`${API_BASE}/document/upload`, {
+        method: "POST",
+        body: form,
+      });
+
+      if (!res.ok) throw new Error(`Backend error ${res.status}`);
+
+      const data = await res.json() as {
+        filename: string;
+        word_count: number;
+        events?: AgentEvent[];
+      };
+
+      const summary: Message = {
+        id: Date.now(),
+        role: "bot",
+        text: `Extracted ${data.word_count} words from "${data.filename}". Here's what the AI thinks:`,
+      };
+      setMessages((prev) => [...prev, summary]);
+
+      const botMessages: Message[] = [];
+      for (const event of data.events ?? []) {
+        addEvent(event.agent, event.payload);
+        const text = formatEvent(event);
+        if (text) {
+          botMessages.push({ id: Date.now() + Math.random(), role: "bot", text });
+        }
+      }
+      if (botMessages.length > 0) {
+        setMessages((prev) => [...prev, ...botMessages]);
+      }
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        {
+          id: Date.now(),
+          role: "bot",
+          text: `⚠️ Failed to process "${file.name}". Check that the backend is running.`,
+        },
+      ]);
+    } finally {
+      setBotTyping(false);
+    }
+  }
+
   const sendMessage = () => {
     const text = input.trim();
-    if (!text) return;
+    if (!text && attachedFiles.length === 0) return;
 
-    onSessionChange?.(true);
-    const userMsg: Message = { id: Date.now(), role: "user", text };
-    setMessages((prev) => [...prev, userMsg]);
-    setInput("");
-    setBotTyping(true);
+    if (text) {
+      setMessages((prev) => [...prev, { id: Date.now(), role: "user", text }]);
+      setInput("");
+      analyzeText(text);
+    }
 
-    // Connect WS (no-op if already open) then stream transcript to agents
-    connect();
-    sendTranscript(text);
-
-    // Safety fallback: if no event arrives in 8 s, clear typing indicator
-    const timeout = setTimeout(() => setBotTyping(false), 8000);
-    return () => clearTimeout(timeout);
+    // Process each attached file independently
+    if (attachedFiles.length > 0) {
+      const files = [...attachedFiles];
+      setAttachedFiles([]);
+      for (const file of files) {
+        uploadAndAnalyze(file);
+      }
+    }
   };
 
   const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -313,7 +409,7 @@ export default function ChatBoxMode({ onSessionChange }: ChatBoxModeProps) {
 
         <button
           onClick={sendMessage}
-          disabled={!input.trim() || botTyping}
+          disabled={(!input.trim() && attachedFiles.length === 0) || botTyping}
           className="fl-btn-primary px-[var(--sp-md)] py-[var(--sp-xs)] flex items-center gap-[var(--sp-xs)] disabled:opacity-40 disabled:cursor-not-allowed"
           style={{ borderRadius: "var(--br-sm)" }}
         >

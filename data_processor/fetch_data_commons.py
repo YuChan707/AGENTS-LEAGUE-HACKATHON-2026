@@ -1,4 +1,4 @@
-﻿import httpx
+import httpx
 import asyncio
 
 GEO_ID = "geoId/3651000"

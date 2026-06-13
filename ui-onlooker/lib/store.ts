@@ -25,14 +25,20 @@ export interface CulturalPayload {
 
 export interface CoachingPayload {
   tip: string;
+  error?: string;
 }
 
-export type AgentEventType = "speech" | "audience" | "cultural" | "coaching";
+export interface VisualPayload {
+  insight: string;
+  tip: string;
+}
+
+export type AgentEventType = "speech" | "audience" | "cultural" | "coaching" | "visual";
 
 export interface AgentEvent {
   id: number;
   agent: AgentEventType;
-  payload: SpeechPayload | AudiencePayload | CulturalPayload | CoachingPayload;
+  payload: SpeechPayload | AudiencePayload | CulturalPayload | CoachingPayload | VisualPayload;
   timestamp: number;
 }
 
@@ -40,6 +46,8 @@ export interface SessionConfig {
   personaType: string;
   region: string;
   focusArea: string;
+  environment: string;
+  complexity: string;
 }
 
 interface Store {
@@ -51,6 +59,7 @@ interface Store {
   latestAudience: AudiencePayload | null;
   latestCultural: CulturalPayload | null;
   latestCoaching: CoachingPayload | null;
+  latestVisual: VisualPayload | null;
 
   setSessionId: (id: string) => void;
   setSessionConfig: (config: Partial<SessionConfig>) => void;
@@ -63,13 +72,14 @@ let _counter = 0;
 
 export const useStore = create<Store>((set) => ({
   sessionId: null,
-  sessionConfig: { personaType: "executive", region: "us", focusArea: "business" },
+  sessionConfig: { personaType: "executive", region: "us", focusArea: "business", environment: "professional", complexity: "medium" },
   isConnected: false,
   events: [],
   latestSpeech: null,
   latestAudience: null,
   latestCultural: null,
   latestCoaching: null,
+  latestVisual: null,
 
   setSessionId: (id) => set({ sessionId: id }),
   setSessionConfig: (config) =>
@@ -84,6 +94,7 @@ export const useStore = create<Store>((set) => ({
       ...(agent === "audience" && { latestAudience: payload as AudiencePayload }),
       ...(agent === "cultural" && { latestCultural: payload as CulturalPayload }),
       ...(agent === "coaching" && { latestCoaching: payload as CoachingPayload }),
+      ...(agent === "visual" && { latestVisual: payload as VisualPayload }),
     }));
   },
 
@@ -96,5 +107,6 @@ export const useStore = create<Store>((set) => ({
       latestAudience: null,
       latestCultural: null,
       latestCoaching: null,
+      latestVisual: null,
     }),
 }));
