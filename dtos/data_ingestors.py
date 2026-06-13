@@ -1,4 +1,4 @@
-from marshmallow import Schema, fields, validate
+from marshmallow import Schema, fields, validate, post_load
 
 #     Data Ingestor es donde se va a extraer la data que se necesita y se va a almacenar en las
 # entidades necesarias para luego integrarlas al data processor.
@@ -49,11 +49,14 @@ class LocationStatistics(Schema):
     avg_education= fields.Float(required=True)
     avg_female_population = fields.Float(required=True, validate=validate.Range(min=0, max=100))
     avg_male_population = fields.Float(required=True, validate=validate.Range(min=0, max=100))  
-    total_population = fields.Integer(required=True)         # poblacion total
     age_ranges = fields.Dict(keys=fields.Nested(AgeRange), values=fields.Float(validate=validate.Range(min=0, max=100)))  # %  de edades
     ethnicity_distribution = fields.Dict(keys=fields.String(), values=fields.Float(validate=validate.Range(min=0, max=100)))  # % por etnia
 
 
+class LocationEntity:
+    def __init__(self, **kwargs):
+        for key, value in kwargs.items():
+            setattr(self, key, value)
 
 # Demographics Info  (identidad de la ubicacion)
 class Location(Schema):
@@ -61,22 +64,24 @@ class Location(Schema):
         ordered = True
 
     # Identidad
-    location_id = fields.UUID(required=True)             # ID interno para relacionar (busqueda barata)
-    dcid = fields.String(required=True)                  # Data Commons ID (ej: "geoId/36")
-    location_name = fields.String(required=True)         # Nombre claro
-    coordinates = fields.Nested(GeoPoint, required=True)  # Centroide del sitio
-    zip_code = fields.String(required=True)
+    dc_id = fields.String(required=True, allow_none=True)                  # Data Commons ID (ej: "geoId/36")
+    location_name = fields.String(required=True, allow_none=True)         # Nombre claro
+    coordinates = fields.Nested(GeoPoint, required=True, allow_none=True)  # Centroide del sitio
+    zip_code = fields.String(required=True, allow_none=True)
     country = fields.String(required=True)
     state = fields.String(required=True)
     city = fields.String(required=True)
-
+    total_population = fields.Integer(required=True)
+    density_lvl = fields.Float(required=True, allow_none=True)
     # Metadata estadistica (nested, no aplanada)
-    statistics = fields.Nested(LocationStatistics, required=True)
+    statistics = fields.Nested(LocationStatistics, required=False)
 
     # Procedencia de la data cruda
-    data_source = fields.String(load_default="datacommons.org")
     last_updated = fields.Date()
 
+    @post_load
+    def make_location(self, data, **kwargs):
+        return LocationEntity(**data)
 
 # Grupo demografico extraido de la data cruda
 class DemographicGroup(Schema):
@@ -152,8 +157,8 @@ class BehavioralGroup(Schema):
     group_id = fields.UUID(required=True)
     group_name = fields.String(required=True)
 
-    preferred_platforms = fields.List(fields.String())      # ej: ["instagram", "linkedin"]
-    content_format_preferences = fields.List(fields.String())  # ej: ["video", "carrusel"]
+    preferred_platforms = fields.List(fields.String())
+    content_format_preferences = fields.List(fields.String())
     peak_activity_hours = fields.List(fields.Integer(validate=validate.Range(min=0, max=23)))
     avg_session_minutes = fields.Float(validate=validate.Range(min=0))
     engagement_style = fields.String()                      # ej: "lurker", "creator", "sharer"

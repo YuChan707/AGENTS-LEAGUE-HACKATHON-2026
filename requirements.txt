@@ -1,3 +1,5 @@
 
 marshmallow
 pydantic
+datacommons-client
+pandas
