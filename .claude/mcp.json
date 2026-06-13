@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "onlooker-mcp": {
+      "type": "http",
+      "url": "https://func-onlooker-mcp-SUFFIX.azurewebsites.net/api/mcp",
+      "_comment": "Replace SUFFIX with the value you passed to deploy-mcp.ps1. Run: claude mcp add onlooker-mcp <url>"
+    }
+  }
+}

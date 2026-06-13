@@ -1,18 +1,15 @@
-import os
-from groq import AsyncGroq
-from dotenv import load_dotenv
-
-load_dotenv()
+from services.llm_factory import get_llm_client, get_model
 
 PROMPT = """Presentation coach. Session data:
 pace={pace}wpm fillers={fillers} clarity={clarity}/1.0 audience={audience}
 Setting: {environment} presentation, content complexity: {complexity}
+Audience: {audience_amount} attendees, age group {audience_min_age}–{audience_max_age}
 Last tip given: {last_tip}
 
 If there is not enough context (very short input, first words only), respond with exactly:
 "Need more context to coach"
 
-Otherwise give ONE coaching tip tailored to the setting and complexity, max 12 words. Plain text only. No JSON. No punctuation at end."""
+Otherwise give ONE coaching tip tailored to the setting, complexity, and audience, max 12 words. Plain text only. No JSON. No punctuation at end."""
 
 
 def _sanitize(tip: str) -> str:
@@ -31,6 +28,9 @@ async def get_coaching_tip(
     last_tip: str = "none",
     environment: str = "professional",
     complexity: str = "medium",
+    audience_min_age: int = 18,
+    audience_max_age: int = 45,
+    audience_amount: int = 100,
 ) -> dict:
     word_count = scores.get("word_count", 0)
 
@@ -52,11 +52,14 @@ async def get_coaching_tip(
         last_tip=last_tip,
         environment=environment,
         complexity=complexity,
+        audience_min_age=audience_min_age,
+        audience_max_age=audience_max_age,
+        audience_amount=audience_amount,
     )
     try:
-        client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
+        client = get_llm_client()
         response = await client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model=get_model(fast=True),
             messages=[{"role": "user", "content": prompt}],
             max_tokens=60,
             temperature=0.5,

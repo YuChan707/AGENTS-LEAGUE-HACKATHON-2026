@@ -30,6 +30,10 @@ export function useWebSocket() {
           persona: configRef.current.personaType,
           region: configRef.current.region,
           focus_area: configRef.current.focusArea,
+          feedback_setting: configRef.current.feedbackSetting || "academic_us",
+          audience_min_age: configRef.current.audienceMinAge ?? 18,
+          audience_max_age: configRef.current.audienceMaxAge ?? 45,
+          audience_amount: configRef.current.audienceAmount ?? 100,
         })
       );
     };

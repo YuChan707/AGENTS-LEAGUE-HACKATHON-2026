@@ -7,7 +7,8 @@ import DashboardView from "@/components/DashboardView";
 import ChatBoxMode from "@/components/ChatBoxMode";
 import AliveModeView from "@/components/AliveModeView";
 import { Monitor, User, Feather, Bot } from "lucide-react";
-import { useStore, CoachingPayload, AudiencePayload, AgentEvent } from "@/lib/store";
+import { useStore, CoachingPayload, AudiencePayload, AgentEvent, LiveAIInsight } from "@/lib/store";
+import DocumentsPanel from "@/components/DocumentsPanel";
 
 /* ── Logo ── */
 const LOGO_SRC =
@@ -190,6 +191,7 @@ export default function Page() {
         {view === "analysis" && (
           <>
             <div className="w-full md:w-1/3 flex flex-col gap-[var(--sp-lg)]">
+              <DocumentsPanel />
               <ProjectSettings mode="analysis" />
               <LiveAIPanel
                 mode={mode}
@@ -339,26 +341,51 @@ function ModeCard({ active, icon, iconNode, label, sub, tooltip, tags, activeLab
   );
 }
 
-function eventToText(e: AgentEvent): string {
-  if (e.agent === "coaching") return (e.payload as CoachingPayload).tip;
+function condenseFeedback(e: AgentEvent): string {
+  if (e.agent === "coaching") {
+    const tip = (e.payload as CoachingPayload).tip;
+    // Already short — cap at first sentence
+    return tip.split(/[.!?]/)[0].trim() || tip;
+  }
   if (e.agent === "audience") {
     const p = e.payload as AudiencePayload;
-    return `${p.speaker} (${p.role}): "${p.internal_thought}"`;
+    // One-sentence summary: reaction + body language
+    const reaction = p.reaction_type.charAt(0).toUpperCase() + p.reaction_type.slice(1);
+    return `${reaction} — ${p.body_language}`;
   }
   return "";
 }
 
+const INSIGHT_COLORS: Record<LiveAIInsight["category"], { bg: string; text: string; label: string }> = {
+  grammar:    { bg: "rgba(245,158,11,0.12)",  text: "#b45309", label: "Grammar"    },
+  engagement: { bg: "rgba(0,120,212,0.10)",   text: "#0078d4", label: "Engagement" },
+  clarity:    { bg: "rgba(196,54,44,0.10)",   text: "#c4362c", label: "Clarity"    },
+  structure:  { bg: "rgba(139,92,246,0.10)",  text: "#7c3aed", label: "Structure"  },
+  delivery:   { bg: "rgba(16,124,16,0.10)",   text: "#107c10", label: "Delivery"   },
+};
+
 function LiveAIPanel({ mode, isLive, isPaused = false }: { mode: Mode; isLive: boolean; isPaused?: boolean }) {
   const endRef = useRef<HTMLDivElement>(null);
   const events = useStore((s) => s.events);
+  const docAnalysis = useStore((s) => s.latestDocumentAnalysis);
+  const filename = useStore((s) => s.latestFilename);
+  const liveAIInsights = useStore((s) => s.liveAIInsights);
+
+  const fileLabel = filename
+    ? filename.length > 20 ? filename.slice(0, 18) + "…" : filename
+    : null;
 
   const liveMessages = events
     .filter((e) => e.agent === "coaching" || e.agent === "audience")
-    .map(eventToText)
+    .map((e) => {
+      const text = condenseFeedback(e);
+      if (!text) return "";
+      return fileLabel ? `${fileLabel} — ${text}` : text;
+    })
     .filter(Boolean);
 
-  // Three states: inactive → processing (sent, no reply yet) → active (real data)
-  const hasData = liveMessages.length > 0;
+  const hasInsights = liveAIInsights.length > 0;
+  const hasData = liveMessages.length > 0 || hasInsights;
   const dotColor = hasData ? "#107c10" : isLive ? "#f59e0b" : "#9ca3af";
   const statusLabel = hasData ? "Live AI Analysis" : isLive ? "AI Processing…" : "AI Inactive";
 
@@ -376,7 +403,7 @@ function LiveAIPanel({ mode, isLive, isPaused = false }: { mode: Mode; isLive: b
 
   useEffect(() => {
     if (hasData) endRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [hasData, liveMessages.length]);
+  }, [hasData, liveMessages.length, hasInsights]);
 
   const hh = String(Math.floor(elapsed / 3600)).padStart(2, "0");
   const mm = String(Math.floor((elapsed % 3600) / 60)).padStart(2, "0");
@@ -418,22 +445,40 @@ function LiveAIPanel({ mode, isLive, isPaused = false }: { mode: Mode; isLive: b
       {/* Body */}
       <div className="p-[var(--sp-md)] flex flex-col gap-[var(--sp-sm)]">
 
-        {/* State 1: Inactive — nothing sent yet */}
+        {/* State 1: Inactive */}
         {!isLive && !hasData && (
-          <div className="flex items-start gap-[var(--sp-sm)]">
-            <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "var(--color-surface-high)" }}>
-              <Feather size={12} color="#717783" strokeWidth={2} />
+          <div className="flex flex-col gap-[var(--sp-sm)]">
+            <div className="flex items-start gap-[var(--sp-sm)]">
+              <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "var(--color-surface-high)" }}>
+                <Feather size={12} color="#717783" strokeWidth={2} />
+              </div>
+              <div
+                className="px-[var(--sp-sm)] py-[var(--sp-xs)] rounded-lg border"
+                style={{ background: "var(--color-surface-low)", borderColor: "var(--color-surface-highest)", fontSize: "var(--text-sm)", color: "var(--color-on-surface-variant)", fontStyle: "italic", lineHeight: "var(--lh-sm)" }}
+              >
+                {mode === "alive" ? "Start screen sharing to activate live analysis." : "Send a message or upload a file to activate analysis."}
+              </div>
             </div>
-            <div
-              className="px-[var(--sp-sm)] py-[var(--sp-xs)] rounded-lg border"
-              style={{ background: "var(--color-surface-low)", borderColor: "var(--color-surface-highest)", fontSize: "var(--text-sm)", color: "var(--color-on-surface-variant)", fontStyle: "italic", lineHeight: "var(--lh-sm)" }}
-            >
-              {mode === "alive" ? "Start screen sharing to activate live analysis." : "Send a message or upload a file to activate analysis."}
-            </div>
+            {docAnalysis?.short_feedback && (
+              <div className="flex items-start gap-[var(--sp-sm)]">
+                <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "rgba(0,120,212,0.12)" }}>
+                  <Feather size={12} color="#0078d4" strokeWidth={2} />
+                </div>
+                <div
+                  className="px-[var(--sp-sm)] py-[var(--sp-xs)] rounded-lg flex-1"
+                  style={{ background: "rgba(0,120,212,0.04)", borderLeft: "2px solid var(--color-btn-action)", fontSize: "var(--text-sm)", color: "var(--color-on-surface)", lineHeight: "var(--lh-sm)", paddingLeft: 8 }}
+                >
+                  <span style={{ display: "block", fontSize: 9, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.1em", color: "var(--color-btn-action)", marginBottom: 2 }}>
+                    Reminder
+                  </span>
+                  {docAnalysis.short_feedback}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
-        {/* State 2: Processing — sent, waiting for backend */}
+        {/* State 2: Processing */}
         {isLive && !hasData && (
           <div className="flex items-start gap-[var(--sp-sm)]">
             <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "var(--color-btn-action)" }}>
@@ -455,23 +500,68 @@ function LiveAIPanel({ mode, isLive, isPaused = false }: { mode: Mode; isLive: b
           </div>
         )}
 
-        {/* State 3: Active — real AI events from backend */}
+        {/* State 3: Active — categorized insights + live session events */}
         {hasData && (
-          <div className="overflow-y-auto no-scrollbar flex flex-col gap-[var(--sp-sm)]" style={{ maxHeight: 220 }}>
-            {liveMessages.map((text: string, i: number) => (
-              <div key={i} className="flex items-start gap-[var(--sp-sm)]">
-                <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "var(--color-btn-action)" }}>
-                  <Feather size={12} color="#ffffff" strokeWidth={2} />
+          <div className="overflow-y-auto no-scrollbar flex flex-col gap-[var(--sp-sm)]" style={{ maxHeight: 280 }}>
+
+            {/* Document-derived categorized insights */}
+            {hasInsights && liveAIInsights.map((item: LiveAIInsight, i: number) => {
+              const c = INSIGHT_COLORS[item.category] ?? INSIGHT_COLORS.delivery;
+              return (
+                <div key={`insight-${i}`} className="flex items-start gap-[var(--sp-sm)]">
+                  <span
+                    className="rounded flex-shrink-0 flex items-center justify-center"
+                    style={{
+                      minWidth: 64,
+                      fontSize: 9,
+                      fontWeight: 800,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.06em",
+                      background: c.bg,
+                      color: c.text,
+                      padding: "3px 6px",
+                      borderRadius: 4,
+                      lineHeight: 1.4,
+                    }}
+                  >
+                    {c.label}
+                  </span>
+                  <div
+                    className="flex-1 px-[var(--sp-sm)] py-[var(--sp-xs)] rounded-lg border"
+                    style={{ background: "var(--color-surface-low)", borderColor: "var(--color-surface-highest)", fontSize: "var(--text-sm)", color: "var(--color-on-surface)", lineHeight: "var(--lh-sm)" }}
+                  >
+                    {item.text}
+                  </div>
                 </div>
-                <div
-                  className="px-[var(--sp-sm)] py-[var(--sp-xs)] rounded-lg border flex-1"
-                  style={{ background: "var(--color-surface-low)", borderColor: "var(--color-surface-highest)", fontSize: "var(--text-sm)", color: "var(--color-on-surface)", lineHeight: "var(--lh-sm)" }}
-                >
-                  {text}
+              );
+            })}
+
+            {/* Live session events (coaching / audience) */}
+            {liveMessages.map((msg: string, i: number) => {
+              const sepIdx = msg.indexOf(" — ");
+              const hasLabel = fileLabel && sepIdx !== -1 && msg.startsWith(fileLabel);
+              const labelPart = hasLabel ? msg.slice(0, sepIdx) : null;
+              const bodyPart = hasLabel ? msg.slice(sepIdx + 3) : msg;
+              return (
+                <div key={`live-${i}`} className="flex items-start gap-[var(--sp-sm)]">
+                  <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "var(--color-btn-action)" }}>
+                    <Feather size={12} color="#ffffff" strokeWidth={2} />
+                  </div>
+                  <div
+                    className="px-[var(--sp-sm)] py-[var(--sp-xs)] rounded-lg border flex-1"
+                    style={{ background: "var(--color-surface-low)", borderColor: "var(--color-surface-highest)", fontSize: "var(--text-sm)", color: "var(--color-on-surface)", lineHeight: "var(--lh-sm)" }}
+                  >
+                    {labelPart && (
+                      <span style={{ fontWeight: 700, color: "var(--color-btn-action)", marginRight: 4, fontSize: 10 }}>
+                        [{labelPart}]
+                      </span>
+                    )}
+                    {bodyPart}
+                  </div>
                 </div>
-              </div>
-            ))}
-            {/* Typing indicator — always visible while session is live */}
+              );
+            })}
+
             {isLive && (
               <div className="flex items-center gap-[var(--sp-sm)]">
                 <div className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0" style={{ background: "var(--color-btn-action)" }}>

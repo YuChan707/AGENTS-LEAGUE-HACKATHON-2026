@@ -1,8 +1,4 @@
-import os
-from groq import AsyncGroq
-from dotenv import load_dotenv
-
-load_dotenv()
+from services.llm_factory import get_llm_client, get_model
 
 FOCUS_DESC = {
     "marketing": "brand engagement and audience emotional response",
@@ -50,9 +46,9 @@ async def generate_email_draft(session_summary: dict) -> dict:
         key_insight=key_insight,
     )
     try:
-        client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
+        client = get_llm_client()
         response = await client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model=get_model(fast=False),
             messages=[{"role": "user", "content": prompt}],
             max_tokens=300,
             temperature=0.4,

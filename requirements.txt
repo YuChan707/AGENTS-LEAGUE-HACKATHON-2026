@@ -16,8 +16,8 @@ chromadb
 azure-storage-blob
 
 # AI / LLM
-semantic-kernel
 groq
+openai
 
 # Document generation
 python-pptx

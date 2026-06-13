@@ -1,9 +1,5 @@
-import os
 import json
-from groq import AsyncGroq
-from dotenv import load_dotenv
-
-load_dotenv()
+from services.llm_factory import get_llm_client, get_model
 
 PERSONAS = {
     "investor": {
@@ -34,6 +30,7 @@ PERSONAS = {
 
 PROMPT = '''You are {name}, a {role} in {location}. Style: {style}.
 Setting: {environment} presentation, content complexity is {complexity}.
+Audience context: {audience_amount} people attending, age group {audience_min_age}–{audience_max_age}.
 Presenter just said: "{text}"
 React as {name} in a real meeting. Return JSON only:
 {{"reaction_type":"nodding|skeptical|distracted|engaged|interrupting","body_language":"one short phrase","internal_thought":"one sentence","would_ask":"question or null","focus_area":"{focus_area}"}}'''
@@ -45,6 +42,9 @@ async def simulate_audience(
     focus_area: str = "finance",
     environment: str = "professional",
     complexity: str = "medium",
+    audience_min_age: int = 18,
+    audience_max_age: int = 45,
+    audience_amount: int = 100,
 ) -> dict:
     p = PERSONAS.get(persona, PERSONAS["investor"])
     prompt = PROMPT.format(
@@ -56,11 +56,14 @@ async def simulate_audience(
         focus_area=focus_area,
         environment=environment,
         complexity=complexity,
+        audience_min_age=audience_min_age,
+        audience_max_age=audience_max_age,
+        audience_amount=audience_amount,
     )
     try:
-        client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
+        client = get_llm_client()
         response = await client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model=get_model(fast=True),
             messages=[{"role": "user", "content": prompt}],
             max_tokens=200,
             temperature=0.7,

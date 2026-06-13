@@ -60,6 +60,10 @@ export default function ProjectSettings({
   const [area, setArea] = useState("");
   const [location, setLocation] = useState("");
   const [focusPeople, setFocusPeople] = useState("");
+  const [feedbackSetting, setFeedbackSetting] = useState("academic_us");
+  const [audienceMinAge, setAudienceMinAge] = useState(18);
+  const [audienceMaxAge, setAudienceMaxAge] = useState(45);
+  const [audienceAmount, setAudienceAmount] = useState(100);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -70,7 +74,7 @@ export default function ProjectSettings({
     const focusArea = toFocusArea(area);
 
     // Update store config immediately so WS init message and REST calls use these values
-    setSessionConfig({ personaType, region, focusArea, environment, complexity });
+    setSessionConfig({ personaType, region, focusArea, environment, complexity, feedbackSetting, audienceMinAge, audienceMaxAge, audienceAmount });
 
     setLoading(true);
     try {
@@ -203,6 +207,101 @@ export default function ProjectSettings({
             </div>
           </div>
         )}
+
+        {/* Feedback Perspective */}
+        <div className="flex flex-col gap-[var(--sp-xs)]">
+          <FieldLabel>Feedback Perspective</FieldLabel>
+          <div className="fl-input">
+            <select
+              value={feedbackSetting}
+              onChange={(e) => setFeedbackSetting(e.target.value)}
+              className="bg-transparent border-none p-0 pb-[var(--sp-xs)] focus:ring-0 w-full appearance-none cursor-pointer text-[length:var(--text-body)]"
+              style={{ color: "var(--color-on-surface)" }}
+            >
+              <optgroup label="Academic">
+                <option value="academic_us">United States - Western</option>
+                <option value="academic_europe">Europe - Western</option>
+              </optgroup>
+              <optgroup label="Business">
+                <option value="business_uk">United Kingdom - Western</option>
+                <option value="business_asia">Asia - Eastern</option>
+                <option value="startup">Global - Innovation-focused</option>
+              </optgroup>
+              <optgroup label="Community">
+                <option value="community">Diverse - Multicultural</option>
+              </optgroup>
+            </select>
+          </div>
+        </div>
+
+        {/* Audience age */}
+        <div className="flex flex-col gap-[var(--sp-xs)]">
+          <div className="flex items-baseline justify-between">
+            <FieldLabel>Audience age</FieldLabel>
+            <span style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--color-btn-action)" }}>
+              {audienceMinAge} – {audienceMaxAge} yrs
+            </span>
+          </div>
+          <div className="flex flex-col gap-[6px] pt-[2px]">
+            <div className="flex items-center gap-[var(--sp-xs)]">
+              <span style={{ fontSize: 10, color: "var(--color-on-surface-variant)", width: 28, flexShrink: 0 }}>From</span>
+              <input
+                type="range"
+                min={10}
+                max={audienceMaxAge}
+                step={1}
+                value={audienceMinAge}
+                onChange={(e) => setAudienceMinAge(Number(e.target.value))}
+                className="flex-1"
+                style={{ accentColor: "var(--color-btn-action)", cursor: "pointer" }}
+              />
+              <span style={{ fontSize: "var(--text-xs)", color: "var(--color-on-surface)", minWidth: 22, textAlign: "right" }}>{audienceMinAge}</span>
+            </div>
+            <div className="flex items-center gap-[var(--sp-xs)]">
+              <span style={{ fontSize: 10, color: "var(--color-on-surface-variant)", width: 28, flexShrink: 0 }}>To</span>
+              <input
+                type="range"
+                min={audienceMinAge}
+                max={100}
+                step={1}
+                value={audienceMaxAge}
+                onChange={(e) => setAudienceMaxAge(Number(e.target.value))}
+                className="flex-1"
+                style={{ accentColor: "var(--color-btn-action)", cursor: "pointer" }}
+              />
+              <span style={{ fontSize: "var(--text-xs)", color: "var(--color-on-surface)", minWidth: 22, textAlign: "right" }}>{audienceMaxAge}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Audience amount */}
+        <div className="flex flex-col gap-[var(--sp-xs)]">
+          <div className="flex items-baseline justify-between">
+            <FieldLabel>Audience amount</FieldLabel>
+            <span style={{ fontSize: "var(--text-xs)", fontWeight: 700, color: "var(--color-btn-action)" }}>
+              {audienceAmount >= 1000
+                ? `${(audienceAmount / 1000).toFixed(1).replace(".0", "")}k`
+                : audienceAmount.toLocaleString()}{" "}
+              people
+            </span>
+          </div>
+          <div className="flex items-center gap-[var(--sp-xs)] pt-[2px]">
+            <span style={{ fontSize: 10, color: "var(--color-on-surface-variant)", flexShrink: 0 }}>1</span>
+            <input
+              type="range"
+              min={0}
+              max={100}
+              step={1}
+              value={Math.round(Math.log10(Math.max(audienceAmount, 1)) / 5 * 100)}
+              onChange={(e) =>
+                setAudienceAmount(Math.max(1, Math.round(Math.pow(10, Number(e.target.value) / 100 * 5))))
+              }
+              className="flex-1"
+              style={{ accentColor: "var(--color-btn-action)", cursor: "pointer" }}
+            />
+            <span style={{ fontSize: 10, color: "var(--color-on-surface-variant)", flexShrink: 0 }}>100k</span>
+          </div>
+        </div>
 
         {error && (
           <p style={{ fontSize: "var(--text-xs)", color: "var(--color-error)" }}>{error}</p>

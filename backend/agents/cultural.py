@@ -1,9 +1,5 @@
-import os
 import json
-from groq import AsyncGroq
-from dotenv import load_dotenv
-
-load_dotenv()
+from services.llm_factory import get_llm_client, get_model
 
 PROMPT = """Cross-cultural communication expert.
 Context: {region} region, {persona} audience, {focus_area} focus.
@@ -34,9 +30,9 @@ async def check_cultural_fit(
         text=text[:200],
     )
     try:
-        client = AsyncGroq(api_key=os.getenv("GROQ_API_KEY"))
+        client = get_llm_client()
         response = await client.chat.completions.create(
-            model="llama-3.1-8b-instant",
+            model=get_model(fast=True),
             messages=[{"role": "user", "content": prompt}],
             max_tokens=120,
             temperature=0.3,
