@@ -25,6 +25,11 @@ def percentage():
 # ===========================================================================
 # DATA CRUDA  (Data Commons)
 # ===========================================================================
+# Rango etario reutilizable (un rango NO es un solo numero)
+class AgeRange(Schema):
+    min_age = fields.Integer(required=True, validate=validate.Range(min=0, max=120))
+    max_age = fields.Integer(required=True, validate=validate.Range(min=0, max=120))
+
 
 # Punto geografico simple (centroide del lugar)
 class GeoPoint(Schema):
@@ -41,6 +46,13 @@ class LocationStatistics(Schema):
     median_income = fields.Integer(required=True)        # ingreso mediano anual (USD)
     avg_household_size = fields.Float(required=True)      # tamano medio del hogar
     safety_index = fields.Float(required=True, validate=validate.Range(min=0, max=100))
+    avg_education= fields.Float(required=True)
+    avg_female_population = fields.Float(required=True, validate=validate.Range(min=0, max=100))
+    avg_male_population = fields.Float(required=True, validate=validate.Range(min=0, max=100))  
+    total_population = fields.Integer(required=True)         # poblacion total
+    age_ranges = fields.Dict(keys=fields.Nested(AgeRange), values=fields.Float(validate=validate.Range(min=0, max=100)))  # %  de edades
+    ethnicity_distribution = fields.Dict(keys=fields.String(), values=fields.Float(validate=validate.Range(min=0, max=100)))  # % por etnia
+
 
 
 # Demographics Info  (identidad de la ubicacion)
@@ -64,12 +76,6 @@ class Location(Schema):
     # Procedencia de la data cruda
     data_source = fields.String(load_default="datacommons.org")
     last_updated = fields.Date()
-
-
-# Rango etario reutilizable (un rango NO es un solo numero)
-class AgeRange(Schema):
-    min_age = fields.Integer(required=True, validate=validate.Range(min=0, max=120))
-    max_age = fields.Integer(required=True, validate=validate.Range(min=0, max=120))
 
 
 # Grupo demografico extraido de la data cruda
