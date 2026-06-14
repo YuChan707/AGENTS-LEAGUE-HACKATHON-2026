@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { BarChart2, Users, TrendingUp, Zap } from "lucide-react";
-import { DocumentAnalysisPayload, GraphGroup } from "@/lib/store";
+import { BarChart2, Users, TrendingUp, Zap, FileText } from "lucide-react";
+import { DocumentAnalysisEntry, GraphGroup } from "@/lib/store";
 
 interface Props {
-  data: DocumentAnalysisPayload;
+  entries: DocumentAnalysisEntry[];
 }
 
 type GroupBy = "ages" | "type";
@@ -26,7 +26,7 @@ const METRIC_META: Record<Metric, { label: string; color: string; bg: string; ic
   },
 };
 
-function Bar({ value, color, bg }: { value: number; color: string; bg: string }) {
+function Bar({ value, color, bg }: Readonly<{ value: number; color: string; bg: string }>) {
   return (
     <div
       className="relative w-full rounded-sm overflow-hidden"
@@ -40,7 +40,7 @@ function Bar({ value, color, bg }: { value: number; color: string; bg: string })
   );
 }
 
-function GroupRow({ row, metric, color, bg }: { row: GraphGroup; metric: Metric; color: string; bg: string }) {
+function GroupRow({ row, metric, color, bg }: Readonly<{ row: GraphGroup; metric: Metric; color: string; bg: string }>) {
   const value = row[metric];
   return (
     <div className="flex flex-col gap-[3px]">
@@ -57,15 +57,96 @@ function GroupRow({ row, metric, color, bg }: { row: GraphGroup; metric: Metric;
   );
 }
 
-export default function AnalysisGraphPanel({ data }: Props) {
+function FileGraph({
+  entry,
+  metric,
+  groupBy,
+  showDivider,
+}: Readonly<{
+  entry: DocumentAnalysisEntry;
+  metric: Metric;
+  groupBy: GroupBy;
+  showDivider: boolean;
+}>) {
+  const { data, filename } = entry;
+  const rows: GraphGroup[] = groupBy === "ages" ? data.graph_data.by_age : data.graph_data.by_type;
+  const { label, color, bg, icon } = METRIC_META[metric];
+  const avg = Math.round(rows.reduce((s, r) => s + r[metric], 0) / rows.length);
+
+  const displayName = filename.replace(/\.[^/.]+$/, "");
+  const shortName = displayName.length > 22 ? displayName.slice(0, 20) + "…" : displayName;
+
+  return (
+    <div className="flex flex-col gap-[var(--sp-sm)]">
+      {/* File title */}
+      <div
+        className="flex items-center gap-[var(--sp-xs)]"
+        style={showDivider ? { borderTop: "1px solid var(--color-outline-variant)", paddingTop: "var(--sp-sm)" } : undefined}
+      >
+        <FileText size={11} color="#0078d4" strokeWidth={2} />
+        <span
+          style={{
+            fontSize: 10,
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: "0.07em",
+            color: "var(--color-btn-action)",
+          }}
+        >
+          {shortName}
+        </span>
+      </div>
+
+      {/* Average score badge */}
+      <div
+        className="flex items-center justify-between rounded-lg px-[var(--sp-sm)] py-[var(--sp-xs)]"
+        style={{ background: bg, border: `1px solid ${color}22` }}
+      >
+        <div className="flex items-center gap-[var(--sp-xs)]" style={{ color }}>
+          {icon}
+          <span style={{ fontSize: 11, fontWeight: 600 }}>{label}</span>
+        </div>
+        <span style={{ fontSize: 16, fontWeight: 800, color }}>{avg}%</span>
+      </div>
+
+      {/* Bars */}
+      <div className="flex flex-col gap-[var(--sp-sm)]">
+        {rows.map((row) => (
+          <GroupRow key={row.group} row={row} metric={metric} color={color} bg={bg} />
+        ))}
+      </div>
+
+      {/* Key Takeaway */}
+      {data.short_feedback && (
+        <div
+          className="rounded-lg p-[var(--sp-sm)] border-l-2 flex flex-col gap-[2px]"
+          style={{ background: "rgba(0,120,212,0.05)", borderLeftColor: "var(--color-btn-action)" }}
+        >
+          <span
+            style={{
+              fontSize: 9,
+              fontWeight: 800,
+              textTransform: "uppercase",
+              letterSpacing: "0.1em",
+              color: "var(--color-btn-action)",
+            }}
+          >
+            Key Takeaway
+          </span>
+          <span style={{ fontSize: "var(--text-xs)", color: "var(--color-on-surface)", lineHeight: 1.4 }}>
+            {data.short_feedback}
+          </span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export default function AnalysisGraphPanel({ entries }: Props) {
   const [groupBy, setGroupBy] = useState<GroupBy>("ages");
   const [metric, setMetric] = useState<Metric>("engagement");
 
-  const rows: GraphGroup[] = groupBy === "ages" ? data.graph_data.by_age : data.graph_data.by_type;
-  const { label, color, bg, icon } = METRIC_META[metric];
-
-  // Average score for the selected metric
-  const avg = Math.round(rows.reduce((s, r) => s + r[metric], 0) / rows.length);
+  const { color, label } = METRIC_META[metric];
 
   return (
     <div
@@ -93,6 +174,20 @@ export default function AnalysisGraphPanel({ data }: Props) {
         >
           Audience Insights
         </span>
+        {entries.length > 1 && (
+          <span
+            className="ml-auto rounded"
+            style={{
+              fontSize: 9,
+              fontWeight: 700,
+              background: "rgba(0,120,212,0.1)",
+              color: "#0078d4",
+              padding: "2px 6px",
+            }}
+          >
+            {entries.length} files
+          </span>
+        )}
       </div>
 
       <div className="flex-1 overflow-y-auto p-[var(--sp-md)] flex flex-col gap-[var(--sp-md)]">
@@ -161,26 +256,18 @@ export default function AnalysisGraphPanel({ data }: Props) {
           </div>
         </div>
 
-        {/* ── Average score badge ── */}
-        <div
-          className="flex items-center justify-between rounded-lg px-[var(--sp-sm)] py-[var(--sp-xs)]"
-          style={{ background: bg, border: `1px solid ${color}22` }}
-        >
-          <div className="flex items-center gap-[var(--sp-xs)]" style={{ color }}>
-            {icon}
-            <span style={{ fontSize: 11, fontWeight: 600 }}>{label}</span>
-          </div>
-          <span style={{ fontSize: 16, fontWeight: 800, color }}>{avg}%</span>
-        </div>
+        {/* ── Per-file graphs ── */}
+        {entries.map((entry, idx) => (
+          <FileGraph
+            key={entry.filename}
+            entry={entry}
+            metric={metric}
+            groupBy={groupBy}
+            showDivider={idx > 0}
+          />
+        ))}
 
-        {/* ── Bars ── */}
-        <div className="flex flex-col gap-[var(--sp-sm)]">
-          {rows.map((row) => (
-            <GroupRow key={row.group} row={row} metric={metric} color={color} bg={bg} />
-          ))}
-        </div>
-
-        {/* ── Legend ── */}
+        {/* ── Shared legend ── */}
         <div
           className="flex items-center gap-[var(--sp-xs)] pt-[var(--sp-xs)] border-t"
           style={{ borderColor: "var(--color-outline-variant)" }}
@@ -190,32 +277,6 @@ export default function AnalysisGraphPanel({ data }: Props) {
             {label} by {groupBy === "ages" ? "age group" : "audience type"}
           </span>
         </div>
-
-        {/* ── Short feedback ── */}
-        {data.short_feedback && (
-          <div
-            className="rounded-lg p-[var(--sp-sm)] border-l-2 flex flex-col gap-[2px]"
-            style={{
-              background: "rgba(0,120,212,0.05)",
-              borderLeftColor: "var(--color-btn-action)",
-            }}
-          >
-            <span
-              style={{
-                fontSize: 9,
-                fontWeight: 800,
-                textTransform: "uppercase",
-                letterSpacing: "0.1em",
-                color: "var(--color-btn-action)",
-              }}
-            >
-              Key Takeaway
-            </span>
-            <span style={{ fontSize: "var(--text-xs)", color: "var(--color-on-surface)", lineHeight: 1.4 }}>
-              {data.short_feedback}
-            </span>
-          </div>
-        )}
       </div>
     </div>
   );

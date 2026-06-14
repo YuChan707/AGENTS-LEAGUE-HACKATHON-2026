@@ -18,6 +18,19 @@ function toPersonaType(audience: string): string {
   return "customer";
 }
 
+function toComplexity(c: string): string {
+  if (c === "Low level")    return "easy";
+  if (c === "Medium level") return "medium";
+  if (c === "High level")   return "complex";
+  return c;
+}
+
+function toEnvironment(e: string): string {
+  if (e === "Casual presentation")      return "casual";
+  if (e === "Professional presentation") return "professional";
+  return e;
+}
+
 // Map location text → backend region code
 function toRegion(location: string): string {
   const l = location.toLowerCase();
@@ -69,12 +82,14 @@ export default function ProjectSettings({
 
   const handleSubmit = async () => {
     setError(null);
-    const personaType = toPersonaType(audience);
-    const region = toRegion(location);
-    const focusArea = toFocusArea(area);
+    const personaType  = toPersonaType(audience);
+    const region       = toRegion(location);
+    const focusArea    = toFocusArea(area);
+    const normalizedEnv        = toEnvironment(environment);
+    const normalizedComplexity = toComplexity(complexity);
 
-    // Update store config immediately so WS init message and REST calls use these values
-    setSessionConfig({ personaType, region, focusArea, environment, complexity, feedbackSetting, audienceMinAge, audienceMaxAge, audienceAmount });
+    // Update store immediately so WS init message and REST calls use normalized values
+    setSessionConfig({ personaType, region, focusArea, environment: normalizedEnv, complexity: normalizedComplexity, feedbackSetting, audienceMinAge, audienceMaxAge, audienceAmount });
 
     setLoading(true);
     try {

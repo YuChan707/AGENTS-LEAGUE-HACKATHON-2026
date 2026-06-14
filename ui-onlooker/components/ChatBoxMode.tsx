@@ -6,7 +6,7 @@ import {
   FileText, RotateCcw, PresentationIcon, BookOpen,
 } from "lucide-react";
 import {
-  useStore, AgentEvent, AudiencePayload, CoachingPayload,
+  useStore, AgentEvent, CoachingPayload,
   DocumentAnalysisPayload,
 } from "@/lib/store";
 import AnalysisGraphPanel from "@/components/AnalysisGraphPanel";
@@ -56,12 +56,16 @@ function filePrefix(name: string): string {
   return words.length > 16 ? words.slice(0, 15) + "…" : words;
 }
 
+const COACHING_NOISE = ["lack of information", "need more context", "keep speaking", "speak more"];
+
 function formatChunkEvent(event: AgentEvent): string {
-  if (event.agent === "coaching") return (event.payload as CoachingPayload).tip;
-  if (event.agent === "audience") {
-    const p = event.payload as AudiencePayload;
-    return `${p.speaker} (${p.role}) — ${p.body_language}. "${p.internal_thought}"`;
+  if (event.agent === "coaching") {
+    const p = event.payload as CoachingPayload;
+    if (p.error || !p.tip) return "";
+    if (COACHING_NOISE.some((n) => p.tip.toLowerCase().startsWith(n))) return "";
+    return p.tip;
   }
+  // Audience persona simulations are not meaningful in chat context
   return "";
 }
 
@@ -197,7 +201,7 @@ export default function ChatBoxMode({ onSessionChange }: Readonly<ChatBoxModePro
 
   const {
     sessionId, sessionConfig,
-    addEvent, setDocumentAnalysis, latestDocumentAnalysis,
+    addEvent, setDocumentAnalysis, addDocumentAnalysis, documentAnalyses,
     setFilename, setLiveAIInsights,
     fileQueue, enqueueFile, clearFileQueue,
   } = useStore();
@@ -301,7 +305,7 @@ export default function ChatBoxMode({ onSessionChange }: Readonly<ChatBoxModePro
 
       // Full document analysis → structured message
       if (data.document_analysis) {
-        setDocumentAnalysis(data.document_analysis);
+        addDocumentAnalysis(item.name, data.document_analysis);
         if (data.document_analysis.live_ai_items?.length) {
           setLiveAIInsights(data.document_analysis.live_ai_items);
         }
@@ -350,7 +354,7 @@ export default function ChatBoxMode({ onSessionChange }: Readonly<ChatBoxModePro
   };
 
   const handleKey = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendMessage(); }
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (!sendBlocked && !botTyping) sendMessage(); }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -369,8 +373,10 @@ export default function ChatBoxMode({ onSessionChange }: Readonly<ChatBoxModePro
     if (toAdd.length > 0) onSessionChange?.(true);
   };
 
+  const settingsReady = !!sessionId;
   const atLimit = fileQueue.length >= 3;
-  const hasAnalysis = !!latestDocumentAnalysis;
+  const hasAnalysis = documentAnalyses.length > 0;
+  const sendBlocked = fileQueue.length === 0 || !settingsReady;
 
   return (
     <section className="fl-card w-full flex overflow-hidden" style={{ height: "100%", minHeight: 480 }}>
@@ -506,22 +512,27 @@ export default function ChatBoxMode({ onSessionChange }: Readonly<ChatBoxModePro
             />
           </div>
 
-          <button
-            onClick={sendMessage}
-            disabled={(!input.trim() && fileQueue.length === 0) || botTyping}
-            className="fl-btn-primary px-[var(--sp-md)] py-[var(--sp-xs)] flex items-center gap-[var(--sp-xs)] disabled:opacity-40 disabled:cursor-not-allowed"
-            style={{ borderRadius: "var(--br-sm)" }}
+          <span
+            title={sendBlocked && !botTyping ? "please finish set your audiences and document" : undefined}
+            style={{ display: "inline-flex", cursor: sendBlocked && !botTyping ? "not-allowed" : "default" }}
           >
-            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>send</span>
-            <span style={{ fontSize: "var(--text-body)", fontWeight: 600 }}>Send</span>
-          </button>
+            <button
+              onClick={sendMessage}
+              disabled={sendBlocked || botTyping}
+              className="fl-btn-primary px-[var(--sp-md)] py-[var(--sp-xs)] flex items-center gap-[var(--sp-xs)] disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{ borderRadius: "var(--br-sm)", pointerEvents: sendBlocked ? "none" : undefined }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 18 }}>send</span>
+              <span style={{ fontSize: "var(--text-body)", fontWeight: 600 }}>Send</span>
+            </button>
+          </span>
         </div>
       </div>
 
       {/* ── Right: graph panel ── */}
       {hasAnalysis && (
         <div className="flex flex-col" style={{ width: "45%", minWidth: 0 }}>
-          <AnalysisGraphPanel data={latestDocumentAnalysis!} />
+          <AnalysisGraphPanel entries={documentAnalyses} />
         </div>
       )}
     </section>

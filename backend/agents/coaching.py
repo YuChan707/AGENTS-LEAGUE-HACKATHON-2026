@@ -35,14 +35,7 @@ async def get_coaching_tip(
     word_count = scores.get("word_count", 0)
 
     if word_count < 5:
-        return {
-            "agent": "coaching",
-            "type": "coaching",
-            "payload": {
-                "tip": "Lack of information — speak more to receive coaching",
-                "error": "insufficient_input",
-            },
-        }
+        return {"agent": "coaching", "type": "coaching", "payload": {"tip": ""}}
 
     prompt = PROMPT.format(
         pace=scores.get("pace_wpm", 0),
@@ -66,7 +59,7 @@ async def get_coaching_tip(
         )
         tip = _sanitize(response.choices[0].message.content.strip())
         if not tip or tip.lower() in ("need more context to coach", ""):
-            tip = "Lack of information — provide more context"
+            tip = ""
     except Exception:
         tip = "Keep going — you are doing well"
 

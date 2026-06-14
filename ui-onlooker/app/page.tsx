@@ -9,6 +9,7 @@ import AliveModeView from "@/components/AliveModeView";
 import { Monitor, User, Feather, Bot } from "lucide-react";
 import { useStore, CoachingPayload, AudiencePayload, AgentEvent, LiveAIInsight } from "@/lib/store";
 import DocumentsPanel from "@/components/DocumentsPanel";
+import FolderIngestor from "@/components/FolderIngestor";
 
 /* ── Logo ── */
 const LOGO_SRC =
@@ -180,6 +181,7 @@ export default function Page() {
           <>
             <div className="w-full md:w-1/3 flex flex-col gap-[var(--sp-lg)]">
               <DocumentsPanel />
+              <FolderIngestor />
               <ProjectSettings mode="analysis" />
               <LiveAIPanel
                 mode={mode}

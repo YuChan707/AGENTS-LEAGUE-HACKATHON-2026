@@ -100,6 +100,11 @@ export interface SessionConfig {
   audienceAmount?: number;
 }
 
+export interface DocumentAnalysisEntry {
+  filename: string;
+  data: DocumentAnalysisPayload;
+}
+
 interface Store {
   sessionId: string | null;
   sessionConfig: SessionConfig;
@@ -112,6 +117,7 @@ interface Store {
   latestVisual: VisualPayload | null;
   feedbacks: FeedbackPayload[];
   latestDocumentAnalysis: DocumentAnalysisPayload | null;
+  documentAnalyses: DocumentAnalysisEntry[];
   latestFilename: string | null;
   liveAIInsights: LiveAIInsight[];
   fileQueue: FileQueueItem[];
@@ -121,6 +127,7 @@ interface Store {
   setConnected: (connected: boolean) => void;
   addEvent: (agent: AgentEventType, payload: AgentEvent["payload"]) => void;
   setDocumentAnalysis: (payload: DocumentAnalysisPayload | null) => void;
+  addDocumentAnalysis: (filename: string, data: DocumentAnalysisPayload) => void;
   setFilename: (name: string | null) => void;
   setLiveAIInsights: (items: LiveAIInsight[]) => void;
   enqueueFile: (file: File) => void;
@@ -154,6 +161,7 @@ export const useStore = create<Store>((set) => ({
   latestVisual: null,
   feedbacks: [],
   latestDocumentAnalysis: null,
+  documentAnalyses: [],
   latestFilename: null,
   liveAIInsights: [],
   fileQueue: [],
@@ -176,7 +184,20 @@ export const useStore = create<Store>((set) => ({
     }));
   },
 
-  setDocumentAnalysis: (payload) => set({ latestDocumentAnalysis: payload }),
+  setDocumentAnalysis: (payload) => set({
+    latestDocumentAnalysis: payload,
+    ...(payload === null && { documentAnalyses: [] }),
+  }),
+
+  addDocumentAnalysis: (filename, data) =>
+    set((s) => {
+      const filtered = s.documentAnalyses.filter((e) => e.filename !== filename);
+      return {
+        documentAnalyses: [...filtered, { filename, data }].slice(-3),
+        latestDocumentAnalysis: data,
+      };
+    }),
+
   setFilename: (name) => set({ latestFilename: name }),
   setLiveAIInsights: (items) => set({ liveAIInsights: items }),
 
@@ -203,6 +224,7 @@ export const useStore = create<Store>((set) => ({
       latestVisual: null,
       feedbacks: [],
       latestDocumentAnalysis: null,
+      documentAnalyses: [],
       liveAIInsights: [],
       // latestFilename, fileQueue intentionally kept — Documents panel + LiveAI never auto-clear
     }),

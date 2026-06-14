@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Monitor, RotateCcw, Pause, Play, CirclePlay as PlayCircle, Bot, Send,
+  Monitor, RotateCcw, Pause, Play, CirclePlay as PlayCircle, Bot, Send, Sparkles, Eye,
 } from "lucide-react";
 import { Airplay } from "@deemlol/next-icons";
 import {
@@ -13,6 +13,7 @@ import {
   DocumentAnalysisPayload,
   SpeechPayload,
   VisualPayload,
+  DocumentAnalysisEntry,
 } from "@/lib/store";
 import { useWebSocket } from "@/lib/useWebSocket";
 import AnalysisGraphPanel from "@/components/AnalysisGraphPanel";
@@ -113,6 +114,11 @@ export default function AliveModeView({ onShareError, onShareStatusChange }: Ali
   const [aliveDocAnalysis, setAliveDocAnalysis]     = useState<DocumentAnalysisPayload | null>(null);
   const [showFeedbackModal, setShowFeedbackModal]   = useState(false);
   const [hasSharedBefore, setHasSharedBefore]       = useState(false);
+  const [shareCount, setShareCount]                 = useState(0);
+  const [showTips, setShowTips]                     = useState(false);
+  const [showFloatingTips, setShowFloatingTips]     = useState(true);
+  const [showScreenSettings, setShowScreenSettings] = useState(false);
+  const [autoAnalyzing, setAutoAnalyzing]           = useState(false);
 
   const events        = useStore((s) => s.events);
   const sessionId     = useStore((s) => s.sessionId);
@@ -128,12 +134,16 @@ export default function AliveModeView({ onShareError, onShareStatusChange }: Ali
   // sessionStartRef is used in callbacks; sessionStartState drives the render-time useMemo
   const sessionStartRef = useRef(0);
   const [sessionStartState, setSessionStartState] = useState(0);
-  const eventsRef     = useRef(events);
-  const transcriptRef = useRef("");
-  const recognitionRef = useRef<SpeechRecognition | null>(null);
+  const eventsRef        = useRef(events);
+  const transcriptRef    = useRef("");
+  const sessionIdRef     = useRef(sessionId);
+  const sessionConfigRef = useRef(sessionConfig);
+  const recognitionRef   = useRef<{ stop(): void } | null>(null);
 
   useEffect(() => { recordPausedRef.current = recordPaused; }, [recordPaused]);
   useEffect(() => { eventsRef.current = events; }, [events]);
+  useEffect(() => { sessionIdRef.current = sessionId; }, [sessionId]);
+  useEffect(() => { sessionConfigRef.current = sessionConfig; }, [sessionConfig]);
 
   // Events that belong to this alive session only (uses state, not ref, to avoid render-time ref access)
   const sessionEvents = useMemo(() => events.slice(sessionStartState), [events, sessionStartState]);
@@ -182,40 +192,50 @@ export default function AliveModeView({ onShareError, onShareStatusChange }: Ali
   }
 
   // Build AnalysisGraphPanel-compatible data from session events
+  // by_age groups represent Voice vs Screen delivery; by_type represents audience persona
   function buildGraph(): DocumentAnalysisPayload {
     const evts       = eventsRef.current.slice(sessionStartRef.current);
     const speechEvts = evts.filter((e) => e.agent === "speech").map((e) => e.payload as SpeechPayload);
+    const audEvts    = evts.filter((e) => e.agent === "audience").map((e) => e.payload as AudiencePayload);
+
     const avgClarity = speechEvts.length
       ? speechEvts.reduce((s, e) => s + e.clarity_score, 0) / speechEvts.length
       : 0.6;
-    const eng    = Math.round(avgClarity * 100);
-    const minAge = sessionConfig.audienceMinAge ?? 18;
-    const maxAge = sessionConfig.audienceMaxAge ?? 45;
-    const mid    = Math.round((minAge + maxAge) / 2);
+    const voiceEng = Math.round(avgClarity * 100);
+
+    const positiveCount = audEvts.filter((e) => {
+      const m = deriveMood(e.reaction_type || "");
+      return m === "clear" || m === "excite" || m === "great";
+    }).length;
+    const screenEng = audEvts.length
+      ? Math.round((positiveCount / audEvts.length) * 100)
+      : Math.max(30, voiceEng - 10);
+
     const persona = sessionConfig.personaType
       ? sessionConfig.personaType.charAt(0).toUpperCase() + sessionConfig.personaType.slice(1)
       : "General";
+
     return {
       doc_type: "other",
       paragraphs: [],
       success_scores: {
-        audience:    eng,
-        environment: Math.min(eng + 5, 100),
-        complexity:  Math.max(eng - 5, 0),
+        audience:    screenEng,
+        environment: Math.min(screenEng + 5, 100),
+        complexity:  Math.max(voiceEng - 5, 0),
       },
       language_tone: "professional",
       short_feedback: transcriptRef.current
-        ? "Analysis derived from live voice and screen content."
-        : "Analysis derived from live screen content.",
+        ? "Analysis from live voice and screen capture."
+        : "Analysis from live screen capture.",
       live_ai_items: [],
       graph_data: {
         by_age: [
-          { group: `${minAge}–${mid}`, engagement: Math.max(20, eng - 8),  impact: Math.max(15, eng - 12) },
-          { group: `${mid}–${maxAge}`, engagement: Math.min(100, eng + 5), impact: Math.min(100, eng + 2) },
+          { group: "Voice", engagement: voiceEng,  impact: Math.max(15, voiceEng - 8)  },
+          { group: "Screen", engagement: screenEng, impact: Math.max(15, screenEng - 5) },
         ],
         by_type: [
-          { group: persona,   engagement: eng,                         impact: Math.max(20, eng - 5)  },
-          { group: "General", engagement: Math.max(20, eng - 12),     impact: Math.max(15, eng - 15) },
+          { group: persona,   engagement: Math.round((voiceEng + screenEng) / 2), impact: Math.max(20, screenEng - 5)  },
+          { group: "General", engagement: Math.max(20, voiceEng - 12),            impact: Math.max(15, voiceEng - 15) },
         ],
       },
     };
@@ -291,6 +311,7 @@ export default function AliveModeView({ onShareError, onShareStatusChange }: Ali
       setShareStatus("active");
       setPostMetrics(null);
       setAliveDocAnalysis(null);
+      setShareCount((c) => c + 1);
       onShareStatusChange?.("active");
       wsRef.current.connect();
 
@@ -333,12 +354,17 @@ export default function AliveModeView({ onShareError, onShareStatusChange }: Ali
   const pauseStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => { t.enabled = false; });
     setRecordPaused(true);
+    setPostMetrics(computePostMetrics());
+    setAliveDocAnalysis(buildGraph());
     onShareStatusChange?.("paused");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onShareStatusChange]);
 
   const resumeStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => { t.enabled = true; });
     setRecordPaused(false);
+    setPostMetrics(null);
+    setAliveDocAnalysis(null);
     onShareStatusChange?.("active");
   }, [onShareStatusChange]);
 
@@ -410,6 +436,22 @@ export default function AliveModeView({ onShareError, onShareStatusChange }: Ali
   const dispQuestions  = postMetrics?.questions  ?? [];
   const cxColor = complexityColor(dispComplexity);
   const mdColor = moodColor(dispMood);
+
+  // Live AI Analysis line: "Sharing Screen · #N · [latest tip]"
+  const latestCoachTip = [...sessionEvents].reverse().find((e) => e.agent === "coaching")?.payload as CoachingPayload | undefined;
+  const liveAnalysisLine = shareCount > 0
+    ? latestCoachTip
+      ? `Sharing Screen · #${shareCount} · ${latestCoachTip.tip}`
+      : `Sharing Screen · #${shareCount} · Analyzing…`
+    : null;
+
+  // Coaching tips for the collapsible tips box (newest first, max 5)
+  const tipsList = sessionEvents
+    .filter((e) => e.agent === "coaching")
+    .map((e) => (e.payload as CoachingPayload).tip)
+    .slice()
+    .reverse()
+    .slice(0, 5);
 
   // Auto-dismiss feedback modal after 5 s
   useEffect(() => {
@@ -507,24 +549,63 @@ export default function AliveModeView({ onShareError, onShareStatusChange }: Ali
                 REC {recTime}
               </span>
             )}
-            <span
-              className="material-symbols-outlined cursor-pointer transition-colors"
-              style={{ color: "var(--color-on-surface-variant)", fontSize: 20 }}
-              onMouseEnter={(e) => (e.currentTarget.style.color = "var(--color-btn-action)")}
-              onMouseLeave={(e) => (e.currentTarget.style.color = "var(--color-on-surface-variant)")}
-            >
-              settings
-            </span>
+            <div className="relative">
+              <button
+                onClick={() => setShowScreenSettings((v) => !v)}
+                title="Screen share settings"
+                className="w-8 h-8 rounded-full flex items-center justify-center transition-opacity"
+                style={{
+                  background: showScreenSettings ? "#a21caf" : "#d946ef",
+                  opacity: showScreenSettings ? 1 : 0.9,
+                }}
+                onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.opacity = "1"; }}
+                onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.opacity = showScreenSettings ? "1" : "0.9"; }}
+              >
+                <span className="material-symbols-outlined" style={{ color: "#fff", fontSize: 17 }}>settings</span>
+              </button>
+
+              {showScreenSettings && (
+                <>
+                  {/* backdrop to close on outside click */}
+                  <div className="fixed inset-0 z-40" onClick={() => setShowScreenSettings(false)} />
+                  <div
+                    className="absolute right-0 top-full mt-2 z-50 rounded-xl border shadow-xl p-[var(--sp-md)] flex flex-col gap-[var(--sp-sm)]"
+                    style={{ background: "#fff", borderColor: "var(--color-outline-variant)", minWidth: 220 }}
+                  >
+                    <span style={{ fontSize: 10, fontWeight: 800, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-on-surface-variant)" }}>
+                      Screen share settings
+                    </span>
+                    {/* Floating tips toggle */}
+                    <div className="flex items-center justify-between gap-[var(--sp-md)]">
+                      <div className="flex flex-col gap-[2px]">
+                        <span style={{ fontSize: "var(--text-sm)", fontWeight: 600, color: "var(--color-on-surface)" }}>Floating tips</span>
+                        <span style={{ fontSize: 9, color: "var(--color-on-surface-variant)" }}>AI coaching bar over the screen</span>
+                      </div>
+                      <button
+                        onClick={() => setShowFloatingTips((v) => !v)}
+                        className="relative w-10 h-5 rounded-full transition-colors flex-shrink-0"
+                        style={{ background: showFloatingTips ? "var(--color-btn-action)" : "var(--color-surface-highest)" }}
+                      >
+                        <span
+                          className="absolute top-[2px] w-4 h-4 rounded-full bg-white shadow transition-all"
+                          style={{ left: showFloatingTips ? "calc(100% - 18px)" : "2px" }}
+                        />
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
           </div>
         </div>
 
         {/* Main area */}
         <div className="flex-1 flex relative overflow-hidden" style={{ background: "var(--color-surface-container)" }}>
 
-          {/* Floating AI feedback bar */}
+          {/* Floating AI feedback bar — hidden when showFloatingTips is off */}
           <div
             className="absolute z-20 pointer-events-none"
-            style={{ top: "var(--sp-md)", left: "50%", transform: "translateX(-50%)", width: "75%", maxWidth: 480 }}
+            style={{ top: "var(--sp-md)", left: "50%", transform: "translateX(-50%)", width: "75%", maxWidth: 480, display: showFloatingTips ? undefined : "none" }}
           >
             <div
               className="flex items-center gap-[var(--sp-md)] p-[var(--sp-md)] rounded-xl border shadow-2xl"
@@ -631,16 +712,14 @@ export default function AliveModeView({ onShareError, onShareStatusChange }: Ali
                     <span style={{ fontSize: "var(--text-sm)" }}>
                       {postMetrics ? "Session complete — results shown below." : "Waiting for screen share…"}
                     </span>
-                    {!postMetrics && (
-                      <button
-                        onClick={requestShare}
-                        className="mt-[var(--sp-sm)] flex items-center gap-[var(--sp-xs)] px-[var(--sp-lg)] py-[var(--sp-sm)] rounded-lg transition-colors"
-                        style={{ background: "var(--color-btn-action)", color: "#fff", fontSize: "var(--text-xs)", fontWeight: 700 }}
-                      >
-                        <Monitor size={14} color="#fff" strokeWidth={2} />
-                        Start Sharing
-                      </button>
-                    )}
+                    <button
+                      onClick={requestShare}
+                      className="mt-[var(--sp-sm)] flex items-center gap-[var(--sp-xs)] px-[var(--sp-lg)] py-[var(--sp-sm)] rounded-lg transition-colors"
+                      style={{ background: "var(--color-btn-action)", color: "#fff", fontSize: "var(--text-xs)", fontWeight: 700 }}
+                    >
+                      <Monitor size={14} color="#fff" strokeWidth={2} />
+                      {postMetrics ? "New Session" : "Start Sharing"}
+                    </button>
                   </div>
                 )}
               </div>
@@ -665,51 +744,49 @@ export default function AliveModeView({ onShareError, onShareStatusChange }: Ali
             </div>
           </div>
 
-          {/* Share / Re-share button */}
+          {/* Share / Switch-screen button — requests share when idle/denied, switches screen when active */}
           <div className="flex items-center px-[var(--sp-sm)]">
-            {/* Button is clickable when idle or denied (not while actively sharing), and only if settings are configured */}
             {(() => {
-              const canClick = shareStatus !== "active" && !recordPaused && settingsReady;
-              const isActive = shareStatus === "active" || recordPaused;
+              const canClick = settingsReady && !recordPaused;
+              const handleClick = () => {
+                if (shareStatus === "active") retryShare();
+                else requestShare();
+              };
+              const title = !settingsReady
+                ? "Configure Project Settings first"
+                : recordPaused
+                ? "Resume the session before switching"
+                : shareStatus === "active"
+                ? "Switch screen"
+                : shareStatus === "denied"
+                ? "Request screen share access again"
+                : "Start screen sharing";
               return (
                 <button
-                  onClick={canClick ? retryShare : undefined}
-                  disabled={isActive || !settingsReady}
-                  title={
-                    !settingsReady
-                      ? "Configure Project Settings first"
-                      : shareStatus === "denied"
-                      ? "Try again"
-                      : hasSharedBefore
-                      ? "Share screen again"
-                      : "Start screen share"
-                  }
-                  className="p-[var(--sp-sm)] rounded-lg border transition-colors"
+                  onClick={canClick ? handleClick : undefined}
+                  disabled={!canClick}
+                  title={title}
+                  className="p-[var(--sp-sm)] rounded-full border-2 transition-all shadow-md"
                   style={{
-                    background: canClick ? "rgba(255,255,255,0.85)" : "rgba(255,255,255,0.4)",
+                    background: canClick ? "rgba(139,92,246,0.12)" : "rgba(139,92,246,0.05)",
                     backdropFilter: "blur(8px)",
-                    borderColor: shareStatus === "denied" && settingsReady
-                      ? "var(--color-error)"
-                      : "var(--color-outline-variant)",
+                    borderColor: canClick ? "#8b5cf6" : "rgba(139,92,246,0.3)",
                     cursor: canClick ? "pointer" : "not-allowed",
-                    opacity: canClick ? 1 : 0.4,
+                    opacity: canClick ? 1 : 0.5,
                   }}
                   onMouseEnter={(e) => {
                     if (!canClick) return;
-                    (e.currentTarget as HTMLElement).style.borderColor = "var(--color-btn-action)";
-                    (e.currentTarget as HTMLElement).style.background = "rgba(0,120,212,0.08)";
+                    (e.currentTarget as HTMLElement).style.background = "rgba(139,92,246,0.22)";
+                    (e.currentTarget as HTMLElement).style.borderColor = "#7c3aed";
                   }}
                   onMouseLeave={(e) => {
-                    (e.currentTarget as HTMLElement).style.borderColor =
-                      shareStatus === "denied" && settingsReady ? "var(--color-error)" : "var(--color-outline-variant)";
-                    (e.currentTarget as HTMLElement).style.background = canClick
-                      ? "rgba(255,255,255,0.85)"
-                      : "rgba(255,255,255,0.4)";
+                    (e.currentTarget as HTMLElement).style.background = "rgba(139,92,246,0.12)";
+                    (e.currentTarget as HTMLElement).style.borderColor = canClick ? "#8b5cf6" : "rgba(139,92,246,0.3)";
                   }}
                 >
-                  {hasSharedBefore
-                    ? <RotateCcw size={20} color={canClick ? "#404752" : "#9ca3af"} strokeWidth={2} />
-                    : <Airplay size={20} color={canClick ? (shareStatus === "denied" ? "var(--color-error)" : "#404752") : "#9ca3af"} />}
+                  {hasSharedBefore || shareStatus === "active"
+                    ? <RotateCcw size={20} color={canClick ? "#7c3aed" : "#a78bfa"} strokeWidth={2} />
+                    : <Airplay size={20} color={canClick ? (shareStatus === "denied" ? "var(--color-error)" : "#7c3aed") : "#a78bfa"} />}
                 </button>
               );
             })()}
@@ -762,13 +839,56 @@ export default function AliveModeView({ onShareError, onShareStatusChange }: Ali
               AI Instruction
             </span>
           </div>
-          <span style={{ fontSize: 10, color: "var(--color-on-surface-variant)", opacity: 0.7 }}>
-            {sessionConfig.audienceAmount ? `${audienceDisplay} audience` : "Configure audience in Project Settings"}
-          </span>
+          <div className="flex items-center gap-[var(--sp-sm)]">
+            <button
+              onClick={() => setShowTips((v) => !v)}
+              title={showTips ? "Hide tips" : "Show presentation tips"}
+              className="flex items-center gap-[var(--sp-xs)] px-[var(--sp-sm)] py-[4px] rounded-lg border transition-colors"
+              style={{
+                fontSize: 10, fontWeight: 700, letterSpacing: "0.04em",
+                background: showTips ? "rgba(0,120,212,0.10)" : "var(--color-surface-bright)",
+                borderColor: showTips ? "var(--color-btn-action)" : "var(--color-outline-variant)",
+                color: showTips ? "var(--color-btn-action)" : "var(--color-on-surface-variant)",
+              }}
+            >
+              <Eye size={12} strokeWidth={2} />
+              {showTips ? "Hide Tips" : "Show Tips"}
+            </button>
+            <span style={{ fontSize: 10, color: "var(--color-on-surface-variant)", opacity: 0.7 }}>
+              {sessionConfig.audienceAmount ? `${audienceDisplay} audience` : "Configure audience in Project Settings"}
+            </span>
+          </div>
         </div>
 
         {/* Body */}
         <div className="p-[var(--sp-md)] flex flex-col gap-[var(--sp-sm)]">
+          {/* Live AI Analysis row */}
+          <div
+            className="flex items-start gap-[var(--sp-sm)] px-[var(--sp-sm)] py-[var(--sp-xs)] rounded-lg"
+            style={{ background: liveAnalysisLine ? "rgba(0,120,212,0.06)" : "var(--color-surface-low)", borderColor: "var(--color-outline-variant)" }}
+          >
+            <div
+              className="w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-[1px]"
+              style={{ background: liveAnalysisLine ? "var(--color-btn-action)" : "var(--color-surface-high)" }}
+            >
+              <Sparkles size={12} color={liveAnalysisLine ? "#fff" : "var(--color-on-surface-variant)"} strokeWidth={2} />
+            </div>
+            <div className="flex flex-col gap-[2px] flex-1 min-w-0">
+              <span style={{ fontSize: 9, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-on-surface-variant)" }}>
+                Live AI Analysis
+              </span>
+              <span
+                style={{
+                  fontSize: "var(--text-sm)", color: liveAnalysisLine ? "var(--color-on-surface)" : "var(--color-on-surface-variant)",
+                  fontStyle: liveAnalysisLine ? "normal" : "italic",
+                  lineHeight: "var(--lh-sm)", wordBreak: "break-word",
+                }}
+              >
+                {liveAnalysisLine ?? "--"}
+              </span>
+            </div>
+          </div>
+
           <p style={{ fontSize: "var(--text-sm)", color: "var(--color-on-surface-variant)", lineHeight: "var(--lh-sm)", fontStyle: "italic" }}>
             Describe what feedback you need. The AI will analyze your screen content and voice against your Project Settings.
           </p>
@@ -810,6 +930,64 @@ export default function AliveModeView({ onShareError, onShareStatusChange }: Ali
           )}
         </div>
       </section>
+
+      {/* ── Tips box (toggleable) ── */}
+      {showTips && (
+        <section
+          className="rounded-lg border overflow-hidden shadow-sm"
+          style={{
+            background: "var(--color-surface-bright)",
+            borderColor: "var(--color-outline-variant)",
+            animation: "slideDown 0.25s cubic-bezier(0.34,1.56,0.64,1)",
+          }}
+        >
+          <div
+            className="px-[var(--sp-md)] py-[var(--sp-sm)] border-b flex items-center justify-between"
+            style={{ background: "linear-gradient(90deg,rgba(0,120,212,0.06) 0%,transparent 100%)", borderColor: "var(--color-surface-highest)" }}
+          >
+            <div className="flex items-center gap-[var(--sp-sm)]">
+              <div className="w-6 h-6 rounded-full flex items-center justify-center" style={{ background: "var(--color-btn-action)" }}>
+                <Sparkles size={12} color="#fff" strokeWidth={2} />
+              </div>
+              <span style={{ fontSize: "var(--text-xs)", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em", color: "var(--color-on-surface-variant)" }}>
+                Presentation Tips
+              </span>
+            </div>
+            <button
+              onClick={() => setShowTips(false)}
+              className="rounded p-[2px] transition-colors"
+              style={{ color: "var(--color-on-surface-variant)" }}
+              onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--color-error)"; }}
+              onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.color = "var(--color-on-surface-variant)"; }}
+            >
+              <span className="material-symbols-outlined" style={{ fontSize: 16 }}>close</span>
+            </button>
+          </div>
+
+          <div className="p-[var(--sp-md)] flex flex-col gap-[var(--sp-sm)]">
+            {tipsList.length === 0 ? (
+              <div className="flex items-center gap-[var(--sp-sm)]">
+                <div className="w-1.5 h-1.5 rounded-full" style={{ background: "var(--color-outline-variant)" }} />
+                <span style={{ fontSize: "var(--text-sm)", color: "var(--color-on-surface-variant)", fontStyle: "italic" }}>
+                  Tips will appear here once a session starts and the AI analyses your delivery.
+                </span>
+              </div>
+            ) : (
+              tipsList.map((tip, i) => (
+                <div key={i} className="flex items-start gap-[var(--sp-sm)]">
+                  <div
+                    className="w-1.5 h-1.5 rounded-full flex-shrink-0 mt-[6px]"
+                    style={{ background: i === 0 ? "var(--color-btn-action)" : "var(--color-outline-variant)" }}
+                  />
+                  <span style={{ fontSize: "var(--text-sm)", color: i === 0 ? "var(--color-on-surface)" : "var(--color-on-surface-variant)", lineHeight: "var(--lh-sm)" }}>
+                    {tip}
+                  </span>
+                </div>
+              ))
+            )}
+          </div>
+        </section>
+      )}
 
       {/* ── 4 metric cards ── */}
       <div className="grid grid-cols-4 gap-[var(--sp-md)]">
@@ -891,7 +1069,9 @@ export default function AliveModeView({ onShareError, onShareStatusChange }: Ali
       {/* ── Graph panel ── */}
       {aliveDocAnalysis && (
         <div style={{ height: 400 }}>
-          <AnalysisGraphPanel data={aliveDocAnalysis} />
+          <AnalysisGraphPanel
+            entries={[{ filename: "Live Session", data: aliveDocAnalysis } as DocumentAnalysisEntry]}
+          />
         </div>
       )}
     </div>

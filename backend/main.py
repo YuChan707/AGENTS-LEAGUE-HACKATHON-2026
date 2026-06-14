@@ -15,6 +15,7 @@ from routes.stream import router as stream_router
 from routes.analyze import router as analyze_router
 from routes.document import router as document_router
 from routes.feedback import router as feedback_router
+from routes.folder import router as folder_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -33,3 +34,4 @@ app.include_router(stream_router)
 app.include_router(analyze_router)
 app.include_router(document_router)
 app.include_router(feedback_router)
+app.include_router(folder_router)

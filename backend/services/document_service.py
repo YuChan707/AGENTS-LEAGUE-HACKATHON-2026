@@ -1,5 +1,25 @@
 import io
+import asyncio
+from pathlib import Path
 from fastapi import UploadFile, HTTPException
+
+
+async def extract_text_from_path(file_path: str) -> str:
+    """Extract plain text from a filesystem path (used by the folder ingestor)."""
+    p = Path(file_path)
+
+    def _read():
+        content = p.read_bytes()
+        name = p.name.lower()
+        if name.endswith(".pptx"):
+            return _from_pptx(content)
+        if name.endswith(".docx"):
+            return _from_docx(content)
+        if name.endswith(".pdf"):
+            return _from_pdf(content)
+        raise ValueError(f"Unsupported file type: {p.suffix}")
+
+    return await asyncio.to_thread(_read)
 
 
 async def extract_text(file: UploadFile) -> str:

@@ -22,6 +22,8 @@ async def stream(websocket: WebSocket):
                     persona=data.get("persona", "investor"),
                     region=data.get("region", "us"),
                     focus_area=data.get("focus_area", "finance"),
+                    environment=data.get("environment", "professional"),
+                    complexity=data.get("complexity", "medium"),
                     feedback_setting=data.get("feedback_setting", "academic_us"),
                     audience_min_age=int(data.get("audience_min_age", 18)),
                     audience_max_age=int(data.get("audience_max_age", 45)),

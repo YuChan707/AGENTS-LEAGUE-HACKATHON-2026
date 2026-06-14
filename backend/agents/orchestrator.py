@@ -65,17 +65,8 @@ class Orchestrator:
         ctx = self.context
         words = text.strip().split()
 
-        # Guard: too little text to feed to AI agents
+        # Guard: too little text to feed to AI agents — silently skip, no error event
         if len(words) < 5:
-            yield {
-                "agent": "coaching",
-                "type": "coaching",
-                "session_id": ctx.session_id,
-                "payload": {
-                    "tip": "Lack of information — keep speaking to receive live coaching",
-                    "error": "insufficient_input"
-                }
-            }
             return
 
         # Speech — pure Python, runs first and fast
@@ -118,7 +109,8 @@ class Orchestrator:
         coaching_event = await get_coaching_tip(
             scores, ctx.last_reaction, ctx.last_tip, ctx.environment, ctx.complexity, ctx.audience_min_age, ctx.audience_max_age, ctx.audience_amount
         )
-        coaching_event["session_id"] = ctx.session_id
-        ctx.last_tip = coaching_event["payload"].get("tip", "none")
-
-        yield coaching_event
+        tip = coaching_event["payload"].get("tip", "")
+        if tip:
+            coaching_event["session_id"] = ctx.session_id
+            ctx.last_tip = tip
+            yield coaching_event
