@@ -1,34 +1,48 @@
-"""Prompts para generar DATA SINTETICA de comportamiento con una LLM.
+"""Prompts para generar DATA SINTETICA de comportamiento con el Llama 3B.
 
-Genera, a partir de la data CRUDA real de una ubicacion (Location /
-LocationStatistics), tres tipos de salida que validan contra los schemas de
-`dtos`:
+Cada prompt se guarda como una ENTIDAD (`PromptSpec`) con sus features:
 
-  1) build_behavior_model_prompt -> list[BehaviorFormula]
-       Formulas estadisticas reproducibles que dicen COMO cambia cada metrica
-       de comportamiento segun factores demograficos (edad, genero, etnia,
-       income, educacion).
+  * details            -> que hace el prompt / para que sirve.
+  * description_input   -> que entrada espera (forma de los argumentos).
+  * expected_output     -> contrato de la salida (forma del JSON exigido).
+  * output_schema       -> marshmallow Schema con el que se VALIDA la salida.
+  * output_is_list      -> si la salida es un array de entidades o una sola.
+  * builder             -> arma {"model","system","user"} para el modelo.
+  * mock                -> fixture valido (corre el pipeline sin modelo real).
 
-  2) build_field_groups_prompt -> list[FieldBehaviorGroup]
-       Grupos con comportamiento caracteristico por CAMPO (tech, educacion,
-       finanzas, politica, entretenimiento, familia), cada uno con su propio
-       modelo de comportamiento.
+Asi garantizamos que lo que devuelve la LLM cumple los requisitos para crear
+las entidades de grupos estadisticos: `expected_output` documenta el contrato y
+`output_schema` lo hace cumplir via `.load()`.
 
-  3) build_reaction_prompt -> ReactionProfile
-       Como reacciona un segmento a un PRODUCTO DIGITAL, aplicando las formulas
-       del modelo y atribuyendo el resultado a cada factor.
+A partir de la data CRUDA real de una ubicacion (Location / LocationStatistics)
+se generan cuatro tipos de salida:
 
-Cada builder devuelve {"model", "system", "user"} listo para enviar a la API de
-Claude (Messages API). La LLM debe responder SOLO con el JSON pedido; ese JSON
-se valida luego con los marshmallow schemas de `dtos` (.load()).
+  1) BEHAVIOR_MODEL_PROMPT  -> list[BehaviorFormula]
+       Formulas estadisticas reproducibles: COMO cambia cada metrica de
+       comportamiento segun genero, edad, etnia, income/clase y educacion.
 
-Modelo recomendado: Claude Opus 4.8 (claude-opus-4-8) por la calidad del
-razonamiento estadistico; para volumen alto, Sonnet 4.6 (claude-sonnet-4-6).
+  2) FIELD_GROUPS_PROMPT    -> list[FieldBehaviorGroup]
+       Grupos por CAMPO/tema (tech, educacion, entretenimiento, salud,
+       finanzas, politica, familia), cada uno con su modelo de comportamiento.
+
+  3) GROUP_PROFILE_PROMPT   -> GroupBehaviorProfile
+       Un grupo definido por COMBINACION de factores y sus niveles como RANGOS
+       (min / esperado / max) -> los "scores de rangos promedio de reaccion".
+
+  4) REACTION_PROMPT        -> ReactionProfile
+       Como reacciona un segmento a un PRODUCTO DIGITAL, con scores y atribucion.
+
+El modelo por defecto es el LLAMA dockerizado (LLAMA_MODEL en el entorno),
+servido via Dapr Conversation API o endpoint OpenAI-compatible (ver llm_client).
 """
 
 from __future__ import annotations
 
 import json
+import os
+import uuid
+from collections.abc import Callable
+from dataclasses import dataclass
 from textwrap import dedent
 
 from dtos.data_ingestors import (
@@ -40,10 +54,41 @@ from dtos.data_ingestors import (
     FIELD_DOMAINS,
     GENDERS,
     INCOME_BRACKETS,
+    BehaviorFormula as BehaviorFormulaSchema,
+    FieldBehaviorGroup as FieldBehaviorGroupSchema,
+    GroupBehaviorProfile as GroupBehaviorProfileSchema,
 )
+from dtos.data_processors import ReactionProfile as ReactionProfileSchema
 
-# Modelo por defecto para la generacion (ver docstring para alternativas).
-DEFAULT_MODEL = "claude-opus-4-8"
+# Modelo por defecto: el Llama dockerizado (override con LLAMA_MODEL).
+DEFAULT_MODEL = os.getenv("LLAMA_MODEL", "llama3.2:3b")
+
+
+# ---------------------------------------------------------------------------
+# Entidad de prompt
+# ---------------------------------------------------------------------------
+@dataclass(frozen=True)
+class PromptSpec:
+    """Un prompt como entidad, con contrato de entrada/salida y validador."""
+
+    name: str
+    details: str
+    description_input: str
+    expected_output: str
+    builder: Callable[..., dict]
+    output_schema: type
+    output_is_list: bool
+    mock: Callable[..., object]
+    model: str = DEFAULT_MODEL
+
+    def build(self, *args, **kwargs) -> dict:
+        """Devuelve {"model","system","user"} listo para el cliente LLM."""
+        return self.builder(*args, **kwargs)
+
+    def validate(self, data):
+        """Valida la salida de la LLM contra el schema. Devuelve la entidad."""
+        schema = self.output_schema()
+        return schema.load(data, many=self.output_is_list)
 
 
 # ---------------------------------------------------------------------------
@@ -55,6 +100,13 @@ def _enum(values: tuple[str, ...]) -> str:
 
 def _json(obj) -> str:
     return json.dumps(obj, ensure_ascii=False, indent=2)
+
+
+def _with_grounding(user: str, grounding: str = "") -> str:
+    """Anexa el bloque de evidencia de Foundry IQ al mensaje de usuario."""
+    if not grounding:
+        return user
+    return f"{grounding}\n\n{user}"
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +132,7 @@ _GUARDRAILS = dedent(
     - segment_value debe ser coherente con su factor:
         age    -> rangos tipo "18-24", "25-34", "65+"
         gender -> {_enum(GENDERS)}
-        income -> {_enum(INCOME_BRACKETS)}
+        income -> {_enum(INCOME_BRACKETS)}   (clase social: low=baja ... high=alta)
         education -> {_enum(EDUCATION_LEVELS)}
         field  -> {_enum(FIELD_DOMAINS)}
         ethnicity -> usa las etiquetas presentes en ethnicity_distribution.
@@ -119,7 +171,7 @@ _BEHAVIOR_FORMULA_CONTRACT = dedent(
       "combination_rule": <enum COMBINATION_RULES>,
       "modifiers": [ FactorModifier, ... ],   // al menos 3, cubriendo varios factores
       "expression": <string legible y reproducible,
-                     ej: "adoption = clamp(base * Π(multipliers) + Σ(additives), 0, 1)">,
+                     ej: "adoption = clamp(base * P(multipliers) + S(additives), 0, 1)">,
       "output_min": <float, default 0.0>,
       "output_max": <float, default 1.0>,
       "sample_size": <int>,           // n sintetico que respalda la estimacion
@@ -238,13 +290,9 @@ def build_behavior_model_prompt(
     *,
     location_label: str = "",
     metrics: tuple[str, ...] | None = None,
+    grounding: str = "",
 ) -> dict:
-    """Prompt para generar el modelo estadistico (list[BehaviorFormula]).
-
-    location_stats: dict de LocationStatistics (median_income, age_ranges,
-        ethnicity_distribution, unemployment_rate, poverty_rate, ...).
-    metrics: subconjunto de BEHAVIOR_METRICS a modelar (default: todas).
-    """
+    """Prompt para generar el modelo estadistico (list[BehaviorFormula])."""
     metrics = metrics or BEHAVIOR_METRICS
     user = dedent(
         f"""
@@ -270,22 +318,23 @@ def build_behavior_model_prompt(
         Devuelve SOLO el array JSON de BehaviorFormula.
         """
     ).strip()
-    return {"model": DEFAULT_MODEL, "system": BEHAVIOR_MODEL_SYSTEM, "user": user}
+    return {"model": DEFAULT_MODEL, "system": BEHAVIOR_MODEL_SYSTEM, "user": _with_grounding(user, grounding)}
 
 
 # ===========================================================================
-# 2) GRUPOS POR CAMPO  ->  list[FieldBehaviorGroup]
+# 2) GRUPOS POR CAMPO / TEMA  ->  list[FieldBehaviorGroup]
 # ===========================================================================
 FIELD_GROUPS_SYSTEM = dedent(
     f"""
     Eres un estratega de audiencias. Construyes grupos sinteticos con
-    comportamiento CARACTERISTICO de un campo profesional/de interes (tech,
-    educacion, finanzas, politica, entretenimiento, familia), enfocados a como
-    evaluan y adoptan un producto digital.
+    comportamiento CARACTERISTICO de un campo/tema (tecnologia, educacion,
+    entretenimiento, salud, finanzas, politica, familia), enfocados a como
+    evaluan y adoptan un producto digital. Son los representantes que usa el
+    usuario cuando quiere la reaccion de un publico orientado a un campo.
 
     Cada grupo es un FieldBehaviorGroup e incluye su PROPIO modelo de
     comportamiento (behavior_formulas), porque cada campo reacciona distinto:
-    p. ej. finanzas pesa privacidad/ROI y tiene baja jargon_tolerance al riesgo;
+    p. ej. salud pesa privacidad/evidencia y tiene baja tolerancia al riesgo;
     entretenimiento pesa novedad y tiene alta sharing_propensity.
 
     {_GUARDRAILS}
@@ -307,6 +356,7 @@ def build_field_groups_prompt(
     *,
     location_label: str = "",
     domains: tuple[str, ...] = FIELD_DOMAINS,
+    grounding: str = "",
 ) -> dict:
     """Prompt para generar un FieldBehaviorGroup por cada dominio de FIELD_DOMAINS."""
     user = dedent(
@@ -324,27 +374,25 @@ def build_field_groups_prompt(
         - Aterriza el perfil a la poblacion local (usa income/edad reales para
           typical_income_bracket y typical_age_range).
         - product_evaluation_criteria debe reflejar la lente del campo
-          (finanzas: ROI/seguridad; familia: facilidad/seguridad de menores;
-          tech: extensibilidad/rendimiento; etc.).
+          (salud: privacidad/evidencia clinica; finanzas: ROI/seguridad;
+          tech: extensibilidad/rendimiento; entretenimiento: novedad; etc.).
         - Incluye 2-4 behavior_formulas por grupo, priorizando
           adoption_propensity, trust_score y engagement_likelihood.
 
         Devuelve SOLO el array JSON de FieldBehaviorGroup.
         """
     ).strip()
-    return {"model": DEFAULT_MODEL, "system": FIELD_GROUPS_SYSTEM, "user": user}
+    return {"model": DEFAULT_MODEL, "system": FIELD_GROUPS_SYSTEM, "user": _with_grounding(user, grounding)}
 
 
 # ===========================================================================
 # 3) PERFIL DE GRUPO POR RANGOS  ->  GroupBehaviorProfile
-#    Un grupo definido por la COMBINACION de factores (edad+etnia+genero+campo)
-#    y como varian sus niveles de comportamiento entre min y max.
 # ===========================================================================
 GROUP_PROFILE_SYSTEM = dedent(
     f"""
     Eres un cientifico de datos de audiencias. Recibes la definicion de un grupo
     como una COMBINACION de factores (un rango de edad, una etnia concreta, un
-    genero, un income, un campo profesional) y la data real de su ubicacion.
+    genero, un income/clase social, un campo) y la data real de su ubicacion.
 
     Construyes un GroupBehaviorProfile: para cada metrica de comportamiento das
     un RANGO (min, max, esperado), porque dentro del grupo los niveles VARIAN
@@ -353,7 +401,7 @@ GROUP_PROFILE_SYSTEM = dedent(
     resultado de EVALUAR la formula en los extremos del abanico de factores del
     grupo (no un numero inventado).
 
-    Importante sobre los rangos:
+    Importante sobre los rangos (son los "scores" de salida de la audiencia):
     - min_value = la formula evaluada en la combinacion menos favorable del grupo.
     - max_value = la formula evaluada en la combinacion mas favorable.
     - expected_value = el valor tipico (centro del grupo).
@@ -379,15 +427,9 @@ def build_group_profile_prompt(
     *,
     location_label: str = "",
     metrics: tuple[str, ...] | None = None,
+    grounding: str = "",
 ) -> dict:
-    """Prompt para generar un GroupBehaviorProfile (niveles por rango min/max).
-
-    group_definition: combinacion de factores del grupo, ej:
-        {"age_range": {"min_age": 25, "max_age": 44}, "gender": "male",
-         "ethnicity": "asian", "income_bracket": "upper_middle",
-         "education_level": "bachelor", "field_domain": "technology"}
-    location_stats: dict de LocationStatistics para anclar las estimaciones.
-    """
+    """Prompt para generar un GroupBehaviorProfile (niveles por rango min/max)."""
     metrics = metrics or BEHAVIOR_METRICS
     user = dedent(
         f"""
@@ -411,7 +453,7 @@ def build_group_profile_prompt(
         Devuelve SOLO el objeto JSON GroupBehaviorProfile.
         """
     ).strip()
-    return {"model": DEFAULT_MODEL, "system": GROUP_PROFILE_SYSTEM, "user": user}
+    return {"model": DEFAULT_MODEL, "system": GROUP_PROFILE_SYSTEM, "user": _with_grounding(user, grounding)}
 
 
 # ===========================================================================
@@ -444,15 +486,9 @@ def build_reaction_prompt(
     behavior_formulas: list[dict],
     *,
     section: str | None = None,
+    grounding: str = "",
 ) -> dict:
-    """Prompt para generar el ReactionProfile de un segmento ante un asset.
-
-    asset: dict ProjectAsset (asset_id, name, asset_type, summary, language...).
-    segment: dict con el perfil demografico+psico+conducta del segmento
-        (incluye segment_id y los valores de factores: age, gender, ethnicity,
-        income, field...).
-    behavior_formulas: list[BehaviorFormula] aplicables al segmento.
-    """
+    """Prompt para generar el ReactionProfile de un segmento ante un asset."""
     seccion = f'\nSECCION especifica a evaluar: "{section}"' if section else ""
     user = dedent(
         f"""
@@ -481,15 +517,248 @@ def build_reaction_prompt(
         ReactionProfile.
         """
     ).strip()
-    return {"model": DEFAULT_MODEL, "system": REACTION_SYSTEM, "user": user}
+    return {"model": DEFAULT_MODEL, "system": REACTION_SYSTEM, "user": _with_grounding(user, grounding)}
+
+
+# ===========================================================================
+# MOCKS: fixtures validos para correr el pipeline sin modelo real (demo/CI).
+# ===========================================================================
+def _uuid() -> str:
+    return str(uuid.uuid4())
+
+
+def _mock_modifiers() -> list[dict]:
+    return [
+        {
+            "factor": "income",
+            "segment_value": "high",
+            "effect_type": "multiplier",
+            "effect_value": 1.2,
+            "weight": 0.4,
+            "rationale": "Mayor income reduce friccion de adopcion (mock).",
+            "confidence": 0.6,
+        },
+        {
+            "factor": "age",
+            "segment_value": "25-34",
+            "effect_type": "multiplier",
+            "effect_value": 1.15,
+            "weight": 0.3,
+            "rationale": "Adultos jovenes adoptan mas rapido (mock).",
+            "confidence": 0.6,
+        },
+        {
+            "factor": "education",
+            "segment_value": "bachelor",
+            "effect_type": "additive",
+            "effect_value": 0.05,
+            "weight": 0.3,
+            "rationale": "Mayor educacion sube comprension (mock).",
+            "confidence": 0.55,
+        },
+    ]
+
+
+def _mock_formula(metric: str) -> dict:
+    return {
+        "formula_id": _uuid(),
+        "metric": metric,
+        "baseline": 0.5,
+        "combination_rule": "multiplicative",
+        "modifiers": _mock_modifiers(),
+        "expression": f"{metric} = clamp(base * P(mult) + S(add), 0, 1)",
+        "output_min": 0.0,
+        "output_max": 1.0,
+        "sample_size": 1000,
+        "confidence": 0.6,
+        "generated_by": "llm",
+    }
+
+
+def mock_behavior_model(location_stats=None, *, metrics=None, **_kw) -> list[dict]:
+    metrics = metrics or BEHAVIOR_METRICS
+    return [_mock_formula(m) for m in metrics]
+
+
+def mock_field_groups(location_stats=None, *, domains=FIELD_DOMAINS, **_kw) -> list[dict]:
+    out = []
+    for d in domains:
+        out.append(
+            {
+                "group_id": _uuid(),
+                "group_name": f"{d.title()} audience (mock)",
+                "field_domain": d,
+                "description": f"Grupo sintetico orientado al campo {d} (mock fixture).",
+                "typical_age_range": {"min_age": 25, "max_age": 44},
+                "typical_income_bracket": "middle",
+                "dominant_values": ["calidad", "confianza"],
+                "preferred_platforms": ["instagram", "youtube"],
+                "content_format_preferences": ["video", "articulo"],
+                "decision_drivers": ["utilidad", "precio"],
+                "objections": ["privacidad", "curva de aprendizaje"],
+                "jargon_tolerance": 0.5,
+                "product_evaluation_criteria": ["usabilidad", "confianza"],
+                "behavior_formulas": [
+                    _mock_formula("adoption_propensity"),
+                    _mock_formula("trust_score"),
+                ],
+                "generated_by": "llm",
+            }
+        )
+    return out
+
+
+def mock_group_profile(group_definition=None, location_stats=None, *, metrics=None, **_kw) -> dict:
+    metrics = metrics or BEHAVIOR_METRICS
+    gd = group_definition or {}
+    formulas = [_mock_formula(m) for m in metrics]
+    ranges = [
+        {
+            "metric": f["metric"],
+            "min_value": 0.35,
+            "max_value": 0.75,
+            "expected_value": 0.55,
+            "min_driver": "combinacion menos favorable del grupo (mock)",
+            "max_driver": "combinacion mas favorable del grupo (mock)",
+            "formula_id": f["formula_id"],
+        }
+        for f in formulas
+    ]
+    profile = {
+        "profile_id": _uuid(),
+        "group_name": gd.get("group_name") or "Mock group profile",
+        "behavior_ranges": ranges,
+        "formulas": formulas,
+        "confidence": 0.6,
+        "generated_by": "llm",
+    }
+    for key in ("age_range", "gender", "ethnicity", "income_bracket", "education_level", "field_domain", "location_id"):
+        if gd.get(key) is not None:
+            profile[key] = gd[key]
+    return profile
+
+
+def mock_reaction(asset=None, segment=None, behavior_formulas=None, *, section=None, **_kw) -> dict:
+    asset = asset or {}
+    segment = segment or {}
+    return {
+        "reaction_id": _uuid(),
+        "asset_id": asset.get("asset_id") or _uuid(),
+        "segment_id": segment.get("segment_id") or _uuid(),
+        "section": section,
+        "sentiment_score": 0.6,
+        "comprehension_score": 0.65,
+        "cultural_fit_score": 0.6,
+        "engagement_likelihood": 0.55,
+        "metric_scores": {"adoption_propensity": 0.58, "trust_score": 0.6},
+        "factor_attribution": {"income": 0.1, "age": 0.05},
+        "applied_formula_ids": [f["formula_id"] for f in (behavior_formulas or []) if isinstance(f, dict) and f.get("formula_id")],
+        "strengths": ["Propuesta clara (mock)"],
+        "risks": ["Falta prueba social (mock)"],
+        "recommendations": ["Agregar testimonios (mock)"],
+        "confidence": 0.6,
+        "generated_by": "llm",
+    }
+
+
+# ===========================================================================
+# REGISTRO DE PROMPTS (entidades)
+# ===========================================================================
+BEHAVIOR_MODEL_PROMPT = PromptSpec(
+    name="behavior_model",
+    details=(
+        "Construye el modelo estadistico de comportamiento de una ubicacion: "
+        "una formula reproducible por metrica que dice COMO cambia el "
+        "comportamiento segun genero, edad, etnia, income/clase y educacion."
+    ),
+    description_input=(
+        "location_stats (dict LocationStatistics: median_income, age_ranges, "
+        "ethnicity_distribution, unemployment_rate, poverty_rate, ...), "
+        "location_label opcional, metrics opcional (subset de BEHAVIOR_METRICS), "
+        "grounding opcional (evidencia de Foundry IQ)."
+    ),
+    expected_output="Array JSON de BehaviorFormula (>=1 por metrica pedida).",
+    builder=build_behavior_model_prompt,
+    output_schema=BehaviorFormulaSchema,
+    output_is_list=True,
+    mock=mock_behavior_model,
+)
+
+FIELD_GROUPS_PROMPT = PromptSpec(
+    name="field_groups",
+    details=(
+        "Genera grupos de audiencia orientados a un campo/tema (tecnologia, "
+        "educacion, entretenimiento, salud, finanzas, politica, familia), cada "
+        "uno con su comportamiento caracteristico y su propio modelo."
+    ),
+    description_input=(
+        "location_stats (dict), location_label opcional, domains opcional "
+        "(subset de FIELD_DOMAINS), grounding opcional."
+    ),
+    expected_output="Array JSON de FieldBehaviorGroup (uno por dominio pedido).",
+    builder=build_field_groups_prompt,
+    output_schema=FieldBehaviorGroupSchema,
+    output_is_list=True,
+    mock=mock_field_groups,
+)
+
+GROUP_PROFILE_PROMPT = PromptSpec(
+    name="group_profile",
+    details=(
+        "Genera el perfil de un grupo definido por COMBINACION de factores "
+        "(edad+genero+etnia+income+campo) con sus niveles de comportamiento "
+        "como RANGOS (min/esperado/max): los scores de salida de la audiencia."
+    ),
+    description_input=(
+        "group_definition (dict con age_range, gender, ethnicity, "
+        "income_bracket, education_level, field_domain), location_stats (dict), "
+        "location_label opcional, metrics opcional, grounding opcional."
+    ),
+    expected_output="Objeto JSON GroupBehaviorProfile con behavior_ranges y formulas.",
+    builder=build_group_profile_prompt,
+    output_schema=GroupBehaviorProfileSchema,
+    output_is_list=False,
+    mock=mock_group_profile,
+)
+
+REACTION_PROMPT = PromptSpec(
+    name="reaction",
+    details=(
+        "Simula la reaccion de un segmento ante un producto digital aplicando "
+        "el modelo de comportamiento; devuelve scores y atribucion por factor."
+    ),
+    description_input=(
+        "asset (dict ProjectAsset), segment (dict del segmento), "
+        "behavior_formulas (list[BehaviorFormula]), section opcional, grounding opcional."
+    ),
+    expected_output="Objeto JSON ReactionProfile con scores 0-1, atribucion y feedback.",
+    builder=build_reaction_prompt,
+    output_schema=ReactionProfileSchema,
+    output_is_list=False,
+    mock=mock_reaction,
+)
+
+# Registro accesible por nombre.
+PROMPTS: dict[str, PromptSpec] = {
+    p.name: p
+    for p in (BEHAVIOR_MODEL_PROMPT, FIELD_GROUPS_PROMPT, GROUP_PROFILE_PROMPT, REACTION_PROMPT)
+}
 
 
 __all__ = [
     "DEFAULT_MODEL",
+    "PromptSpec",
+    "PROMPTS",
+    "BEHAVIOR_MODEL_PROMPT",
+    "FIELD_GROUPS_PROMPT",
+    "GROUP_PROFILE_PROMPT",
+    "REACTION_PROMPT",
     "BEHAVIOR_MODEL_SYSTEM",
     "FIELD_GROUPS_SYSTEM",
+    "GROUP_PROFILE_SYSTEM",
     "REACTION_SYSTEM",
     "build_behavior_model_prompt",
     "build_field_groups_prompt",
+    "build_group_profile_prompt",
     "build_reaction_prompt",
 ]

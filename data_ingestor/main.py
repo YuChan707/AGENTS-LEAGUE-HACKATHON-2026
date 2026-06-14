@@ -4,6 +4,7 @@ import uuid
 import json
 import logging
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 import pandas as pd
 from census import Census
@@ -204,6 +205,41 @@ async def process_sitemaps(_logger, dc_client, sitemap_zip_codes):
     return locations
 
 
+# Carpeta de persistencia: data_ingestor/data/locations/ (un JSON por zip_code).
+LOCATIONS_DIR = Path(__file__).resolve().parent / "data" / "locations"
+
+
+def persist_locations(_logger, locations) -> Path:
+    """Persiste cada LocationEntity como JSON por zip_code + un indice.
+
+    Se ejecuta cuando termina de procesar TODOS los grupos por zip_code. Vuelca
+    la entidad validada via Marshmallow (.dump) para conservar el contrato.
+    """
+    LOCATIONS_DIR.mkdir(parents=True, exist_ok=True)
+    index = []
+    for loc in locations:
+        record = _location_schema.dump(loc)
+        zip_code = record.get("zip_code") or "unknown"
+        path = LOCATIONS_DIR / f"{zip_code}.json"
+        path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+        index.append(
+            {
+                "zip_code": zip_code,
+                "location_id": record.get("location_id"),
+                "city": record.get("city"),
+                "state": record.get("state"),
+                "has_statistics": bool(record.get("statistics")),
+            }
+        )
+    index_path = LOCATIONS_DIR / "_index.json"
+    index_path.write_text(
+        json.dumps({"count": len(index), "locations": index}, ensure_ascii=False, indent=2),
+        encoding="utf-8",
+    )
+    _logger.info(f"Persistidas {len(index)} ubicaciones en {LOCATIONS_DIR}")
+    return LOCATIONS_DIR
+
+
 async def main(_logger) -> None:
     _logger.info("Inicializando Census Bureau Client")
     dc_client = data_extractor_client()
@@ -213,6 +249,9 @@ async def main(_logger) -> None:
 
     resultant = await process_sitemaps(_logger, dc_client, sitemap_zip_codes)
     _logger.info(f"Proceso finalizado. {len(resultant)} entidades Marshmallow listas.")
+
+    # Termino de procesar todos los grupos por zip_code -> persistir.
+    persist_locations(_logger, resultant)
 
 
 if __name__ == "__main__":

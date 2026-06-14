@@ -63,6 +63,15 @@ next-env.d.ts
 chroma_data/*
 !chroma_data/.gitkeep
 
+# Pipeline generated artifacts (data SINTETICA / persistida en runtime) #
+########################################################################
+# Salidas del data_processor (specs de audiencia, modelos, grupos)
+data_processor/output/
+# Ubicaciones persistidas por el data_ingestor (se regeneran desde el Census)
+data_ingestor/data/locations/
+# Conservar los CSV de entrada (zip codes NY)
+!data_ingestor/data/*.csv
+
 # OS generated files #
 ######################
 .DS_Store

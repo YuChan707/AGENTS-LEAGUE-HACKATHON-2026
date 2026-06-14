@@ -1,0 +1,11 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+psycopg2-binary
+python-dotenv
+httpx
+marshmallow
+pydantic
+chromadb
+python-pptx
+dapr
