@@ -24,18 +24,6 @@ export default function Page() {
   const [chatActive, setChatActive] = useState(false);
   const switchMode = (next: Mode) => setMode(next);
 
-  const latestSpeech = useStore((s) => s.latestSpeech);
-  const latestAudience = useStore((s) => s.latestAudience);
-
-  const liveMetrics = {
-    attention: latestSpeech ? `${Math.round(latestSpeech.clarity_score * 100)}%` : "--",
-    mood: latestAudience?.reaction_type ?? "--",
-    liveAudience: latestAudience ? "1" : "--",
-    questions: latestAudience?.would_ask ? "1+" : "--",
-    complexity: latestSpeech
-      ? latestSpeech.pace_wpm > 160 ? "High" : latestSpeech.pace_wpm > 110 ? "Med" : "Low"
-      : "--",
-  };
 
   return (
     <div
@@ -204,7 +192,7 @@ export default function Page() {
                 <ChatBoxMode onSessionChange={(active) => setChatActive(active)} />
               </div>
               <div style={{ display: mode === "alive" ? "flex" : "none", flexDirection: "column", flex: 1 }}>
-                <AliveModeView metrics={liveMetrics} onShareStatusChange={(s) => setShareState(s)} />
+                <AliveModeView onShareStatusChange={(s) => setShareState(s)} />
               </div>
             </div>
           </>
