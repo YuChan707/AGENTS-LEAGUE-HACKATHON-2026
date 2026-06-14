@@ -27,8 +27,10 @@ if _sqlite:
     )
 else:
     ssl_context = ssl.create_default_context()
-    ssl_context.check_hostname = False
-    ssl_context.verify_mode = ssl.CERT_NONE
+    ssl_verify = os.getenv("DATABASE_SSL_VERIFY", "true").lower()
+    if ssl_verify in ("0", "false", "no"):
+        ssl_context.check_hostname = False
+        ssl_context.verify_mode = ssl.CERT_NONE
     engine = create_async_engine(
         DATABASE_URL,
         connect_args={"ssl": ssl_context},
