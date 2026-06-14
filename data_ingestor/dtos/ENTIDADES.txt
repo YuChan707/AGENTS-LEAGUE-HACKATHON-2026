@@ -1,25 +1,25 @@
 ==============================================================================
- OnLooker - DICCIONARIO DE ENTIDADES (DTOs / marshmallow Schemas)
+ OnLooker - ENTITY DICTIONARY (DTOs / marshmallow Schemas)
 ==============================================================================
- Convenciones de tipo:
-   UUID     -> identificador unico (relaciones por ID)
-   String   -> texto libre
-   Enum     -> String restringido a un vocabulario controlado (validate.OneOf)
-   Integer  -> numero entero
-   Float    -> numero decimal
-   Date     -> fecha
-   Nested   -> objeto anidado (otra entidad)
-   List[x]  -> lista de elementos de tipo x
-   Dict     -> mapa clave/valor flexible
+ Type conventions:
+   UUID     -> unique identifier (relations by ID)
+   String   -> free text
+   Enum     -> String restricted to a controlled vocabulary (validate.OneOf)
+   Integer  -> integer number
+   Float    -> decimal number
+   Date     -> date
+   Nested   -> nested object (another entity)
+   List[x]  -> list of elements of type x
+   Dict     -> flexible key/value map
 ==============================================================================
 
 
 ##############################################################################
-# 1) DATA INGESTORS  (dtos/data_ingestors.py) - ENTIDADES DE ENTRADA
+# 1) DATA INGESTORS  (dtos/data_ingestors.py) - INPUT ENTITIES
 ##############################################################################
 
 ------------------------------------------------------------------------------
- VOCABULARIOS CONTROLADOS (enums)
+ CONTROLLED VOCABULARIES (enums)
 ------------------------------------------------------------------------------
  GENDERS                  : male | female | non_binary | other
  EDUCATION_LEVELS         : none | primary | secondary | high_school |
@@ -29,171 +29,171 @@
 
 
 ==============================================================================
- DATA CRUDA  (extraida de Data Commons)
+ RAW DATA  (extracted from Data Commons)
 ==============================================================================
 
 ------------------------------------------------------------------------------
  GeoPoint
 ------------------------------------------------------------------------------
- Punto geografico simple. Centroide de una ubicacion.
-   latitude   : Float   (-90 a 90)
-   longitude  : Float   (-180 a 180)
+ Simple geographic point. Centroid of a location.
+   latitude   : Float   (-90 to 90)
+   longitude  : Float   (-180 to 180)
 
 ------------------------------------------------------------------------------
  LocationStatistics
 ------------------------------------------------------------------------------
- Metadata estadistica de una ubicacion. Separada de la identidad para tener
- responsabilidad unica y poder versionar/anidar.
-   unemployment_rate     : Float    % de desempleo (0-100)
-   poverty_rate          : Float    % bajo linea de pobreza (0-100)
-   cost_of_living_index  : Float    indice de costo de vida (100 = media nac.)
-   median_income         : Integer  ingreso mediano anual (USD)
-   avg_household_size     : Float    tamano medio del hogar
-   safety_index          : Float    indice de seguridad (0-100)
+ Statistical metadata of a location. Separated from the identity to have a
+ single responsibility and to be able to version/nest.
+   unemployment_rate     : Float    % unemployment (0-100)
+   poverty_rate          : Float    % below poverty line (0-100)
+   cost_of_living_index  : Float    cost of living index (100 = nat. avg.)
+   median_income         : Integer  annual median income (USD)
+   avg_household_size     : Float    average household size
+   safety_index          : Float    safety index (0-100)
 
 ------------------------------------------------------------------------------
  Location
 ------------------------------------------------------------------------------
- Identidad de una ubicacion (foco NY, USA). Une identidad + estadistica.
-   location_id    : UUID      ID interno para relacionar (busqueda barata)
-   dcid           : String    Data Commons ID (ej: "geoId/36")
-   location_name  : String    nombre claro del sitio
-   coordinates    : Nested    GeoPoint (centroide)
-   zip_code       : String    codigo postal
-   country        : String    pais
-   state          : String    estado
-   city           : String    ciudad
+ Identity of a location (focus NY, USA). Joins identity + statistics.
+   location_id    : UUID      internal ID for relating (cheap lookup)
+   dcid           : String    Data Commons ID (e.g.: "geoId/36")
+   location_name  : String    clear name of the site
+   coordinates    : Nested    GeoPoint (centroid)
+   zip_code       : String    postal code
+   country        : String    country
+   state          : String    state
+   city           : String    city
    statistics     : Nested    LocationStatistics
-   data_source    : String    procedencia de la data (default datacommons.org)
-   last_updated   : Date      fecha de ultima actualizacion
+   data_source    : String    provenance of the data (default datacommons.org)
+   last_updated   : Date      date of last update
 
 ------------------------------------------------------------------------------
  AgeRange
 ------------------------------------------------------------------------------
- Rango etario reutilizable (un rango NO es un solo numero).
+ Reusable age range (a range is NOT a single number).
    min_age : Integer  (0-120)
    max_age : Integer  (0-120)
 
 ------------------------------------------------------------------------------
  DemographicGroup
 ------------------------------------------------------------------------------
- Grupo demografico extraido de la data cruda. Referencia a Location por ID.
-   group_id          : UUID      identidad del grupo
-   group_name        : String    nombre del grupo
-   location_id       : UUID      referencia a Location
+ Demographic group extracted from the raw data. Reference to Location by ID.
+   group_id          : UUID      group identity
+   group_name        : String    group name
+   location_id       : UUID      reference to Location
    age_range         : Nested    AgeRange
    gender            : Enum      GENDERS
-   ethnicity         : String    etnia
+   ethnicity         : String    ethnicity
    education_level   : Enum      EDUCATION_LEVELS
    income_bracket    : Enum      INCOME_BRACKETS
-   median_income     : Integer   ingreso mediano del grupo (USD)
-   population_size   : Integer   tamano del grupo (>= 0)
-   population_share  : Float      proporcion dentro de la location (0-1)
+   median_income     : Integer   group median income (USD)
+   population_size   : Integer   group size (>= 0)
+   population_share  : Float      proportion within the location (0-1)
 
 
 ==============================================================================
- DATA SINTETICA  ($$ generada con LLM)
+ SYNTHETIC DATA  ($$ generated with LLM)
 ==============================================================================
 
 ------------------------------------------------------------------------------
  SegmentParticularity
 ------------------------------------------------------------------------------
- Particularidad de un segmento, parametrica por "dimension". Reemplaza a las
- antiguas Gender/Ethnicity/Income/FieldParticularities en una sola entidad.
-   particularity_id : UUID      identidad
+ Particularity of a segment, parametric by "dimension". Replaces the old
+ Gender/Ethnicity/Income/FieldParticularities into a single entity.
+   particularity_id : UUID      identity
    dimension        : Enum      PARTICULARITY_DIMENSIONS
-   label            : String    ej: "female", "latino", "middle", "tech"
-   description      : String    explicacion generada por la LLM
-   attributes       : Dict       atributos libres segun la dimension
-   traits           : List[Str]  rasgos clave en lenguaje natural
-   generated_by     : String    trazabilidad (default "llm")
+   label            : String    e.g.: "female", "latino", "middle", "tech"
+   description      : String    explanation generated by the LLM
+   attributes       : Dict       free attributes depending on the dimension
+   traits           : List[Str]  key traits in natural language
+   generated_by     : String    traceability (default "llm")
 
 ------------------------------------------------------------------------------
  PsychographicGroup
 ------------------------------------------------------------------------------
- Grupo psicografico: valores, intereses, estilo de vida, actitudes.
-   group_id            : UUID       identidad
-   group_name          : String     nombre
-   values              : List[Str]   valores
-   interests           : List[Str]   intereses
-   lifestyle           : List[Str]   estilo de vida
-   personality_traits  : List[Str]   rasgos de personalidad
-   motivations         : List[Str]   motivaciones
-   attitudes           : List[Str]   actitudes
-   generated_by        : String     trazabilidad (default "llm")
+ Psychographic group: values, interests, lifestyle, attitudes.
+   group_id            : UUID       identity
+   group_name          : String     name
+   values              : List[Str]   values
+   interests           : List[Str]   interests
+   lifestyle           : List[Str]   lifestyle
+   personality_traits  : List[Str]   personality traits
+   motivations         : List[Str]   motivations
+   attitudes           : List[Str]   attitudes
+   generated_by        : String     traceability (default "llm")
 
 ------------------------------------------------------------------------------
  BehavioralGroup
 ------------------------------------------------------------------------------
- Grupo conductual: como se comportan online (conocimiento general de la LLM).
-   group_id                    : UUID        identidad
-   group_name                  : String      nombre
-   preferred_platforms         : List[Str]    ej: ["instagram", "linkedin"]
-   content_format_preferences  : List[Str]    ej: ["video", "carrusel"]
-   peak_activity_hours         : List[Int]    horas pico (0-23)
-   avg_session_minutes         : Float        duracion media de sesion
-   engagement_style            : String       ej: "lurker", "creator", "sharer"
-   price_sensitivity           : Float        sensibilidad al precio (0-1)
-   sharing_propensity          : Float        propension a compartir (0-1)
-   generated_by                : String       trazabilidad (default "llm")
+ Behavioral group: how they behave online (LLM's general knowledge).
+   group_id                    : UUID        identity
+   group_name                  : String      name
+   preferred_platforms         : List[Str]    e.g.: ["instagram", "linkedin"]
+   content_format_preferences  : List[Str]    e.g.: ["video", "carousel"]
+   peak_activity_hours         : List[Int]    peak hours (0-23)
+   avg_session_minutes         : Float        average session duration
+   engagement_style            : String       e.g.: "lurker", "creator", "sharer"
+   price_sensitivity           : Float        price sensitivity (0-1)
+   sharing_propensity          : Float        sharing propensity (0-1)
+   generated_by                : String       traceability (default "llm")
 
 
 ##############################################################################
-# 2) DATA PROCESSORS  (dtos/data_processors.py) - ENTIDADES DE SALIDA
+# 2) DATA PROCESSORS  (dtos/data_processors.py) - OUTPUT ENTITIES
 ##############################################################################
 
 ------------------------------------------------------------------------------
- VOCABULARIOS CONTROLADOS (enums)
+ CONTROLLED VOCABULARIES (enums)
 ------------------------------------------------------------------------------
  ASSET_TYPES : document | presentation | spreadsheet | pdf | other
 
 ------------------------------------------------------------------------------
  AudienceSegment
 ------------------------------------------------------------------------------
- Segmento de audiencia accionable = demografia + particularidades + psico +
- conducta. Une todo por referencias de ID (no nesteo pesado).
-   segment_id             : UUID        identidad
-   label                  : String      nombre legible del segmento
-   location_id            : UUID        referencia a Location
-   demographic_group_id   : UUID        referencia a DemographicGroup
-   psychographic_group_id : UUID        referencia a PsychographicGroup
-   behavioral_group_id    : UUID        referencia a BehavioralGroup
-   particularity_ids      : List[UUID]  referencias a SegmentParticularity
-   estimated_reach        : Integer     personas alcanzables (>= 0)
-   confidence             : Float        confianza del armado (0-1)
+ Actionable audience segment = demographics + particularities + psycho +
+ behavior. Joins everything by ID references (not heavy nesting).
+   segment_id             : UUID        identity
+   label                  : String      readable name of the segment
+   location_id            : UUID        reference to Location
+   demographic_group_id   : UUID        reference to DemographicGroup
+   psychographic_group_id : UUID        reference to PsychographicGroup
+   behavioral_group_id    : UUID        reference to BehavioralGroup
+   particularity_ids      : List[UUID]  references to SegmentParticularity
+   estimated_reach        : Integer     reachable people (>= 0)
+   confidence             : Float        confidence of the assembly (0-1)
 
 ------------------------------------------------------------------------------
  ProjectAsset
 ------------------------------------------------------------------------------
- El archivo M365 que OnLooker analiza.
-   asset_id           : UUID        identidad
-   name               : String      nombre del archivo
+ The M365 file that OnLooker analyzes.
+   asset_id           : UUID        identity
+   name               : String      file name
    asset_type         : Enum        ASSET_TYPES
-   summary            : String      resumen del contenido
-   language           : String      idioma del documento
-   target_segment_ids : List[UUID]  audiencias objetivo (AudienceSegment)
-   source_uri         : String      ubicacion del archivo (M365 / Drive)
+   summary            : String      summary of the content
+   language           : String      language of the document
+   target_segment_ids : List[UUID]  target audiences (AudienceSegment)
+   source_uri         : String      location of the file (M365 / Drive)
 
 ------------------------------------------------------------------------------
  ReactionProfile
 ------------------------------------------------------------------------------
- Salida de la LLM: como reacciona un segmento a un asset/seccion.
-   reaction_id            : UUID        identidad
-   asset_id               : UUID        a que asset reacciona
-   segment_id             : UUID        que audiencia reacciona
-   section                : String      seccion/slide/parrafo (opcional)
-   sentiment_score        : Float        sentimiento (0-1)
-   comprehension_score    : Float        comprension (0-1)
-   cultural_fit_score     : Float        encaje cultural (0-1)
-   engagement_likelihood  : Float        probabilidad de engagement (0-1)
-   strengths              : List[Str]    que funciona bien
-   risks                  : List[Str]    que puede fallar / ofender / confundir
-   recommendations        : List[Str]    como mejorarlo para este segmento
-   confidence             : Float        confianza (0-1)
-   generated_by           : String      trazabilidad (default "llm")
+ Output of the LLM: how a segment reacts to an asset/section.
+   reaction_id            : UUID        identity
+   asset_id               : UUID        which asset it reacts to
+   segment_id             : UUID        which audience reacts
+   section                : String      section/slide/paragraph (optional)
+   sentiment_score        : Float        sentiment (0-1)
+   comprehension_score    : Float        comprehension (0-1)
+   cultural_fit_score     : Float        cultural fit (0-1)
+   engagement_likelihood  : Float        engagement probability (0-1)
+   strengths              : List[Str]    what works well
+   risks                  : List[Str]    what may fail / offend / confuse
+   recommendations        : List[Str]    how to improve it for this segment
+   confidence             : Float        confidence (0-1)
+   generated_by           : String      traceability (default "llm")
 
 ==============================================================================
- FLUJO DE RELACIONES (resumen)
+ RELATIONSHIP FLOW (summary)
 ==============================================================================
  Location 1---* DemographicGroup
  AudienceSegment --> Location, DemographicGroup, PsychographicGroup,

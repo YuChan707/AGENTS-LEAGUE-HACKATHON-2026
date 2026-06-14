@@ -1,24 +1,24 @@
-"""Foundry IQ: capa de *grounding* (conocimiento) para la generacion sintetica.
+"""Foundry IQ: *grounding* (knowledge) layer for synthetic generation.
 
-Foundry IQ (Microsoft / Azure AI Foundry) es la capa de recuperacion agentica
-de conocimiento. Aqui la usamos para ANCLAR la audiencia sintetica en hechos
-reales antes de pedirsela al Llama dockerizado: el modelo no inventa en el
-vacio, razona sobre evidencia recuperada.
+Foundry IQ (Microsoft / Azure AI Foundry) is the agentic knowledge retrieval
+layer. Here we use it to ANCHOR the synthetic audience in real facts before
+asking the dockerized Llama for it: the model does not invent in a vacuum, it
+reasons over retrieved evidence.
 
-Dos modos, igual que el cliente LLM:
+Two modes, just like the LLM client:
 
-  * Azure AI Foundry IQ  -> si hay endpoint configurado, hace retrieval contra
-    una knowledge source de Foundry IQ y devuelve los pasajes recuperados.
-      FOUNDRY_IQ_ENDPOINT        base del recurso de Foundry
+  * Azure AI Foundry IQ  -> if an endpoint is configured, it retrieves against
+    a Foundry IQ knowledge source and returns the retrieved passages.
+      FOUNDRY_IQ_ENDPOINT        base of the Foundry resource
       FOUNDRY_IQ_API_KEY         api key / token
-      FOUNDRY_IQ_KNOWLEDGE_BASE  id de la knowledge source / agente de retrieval
+      FOUNDRY_IQ_KNOWLEDGE_BASE  knowledge source / retrieval agent id
 
-  * Local (default)      -> aterriza el grounding en la ESTADISTICA REAL de la
-    ubicacion (Census ACS5 ya ingerido). Esta data ES evidencia real, asi que
-    el pipeline siempre queda anclado aunque no haya servicio Foundry.
+  * Local (default)      -> grounds on the REAL STATISTICS of the location
+    (already ingested Census ACS5). This data IS real evidence, so the pipeline
+    always stays anchored even without a Foundry service.
 
-`ground(query, location_stats)` devuelve un bloque de texto listo para anexar
-al prompt del modelo.
+`ground(query, location_stats)` returns a text block ready to append to the
+model's prompt.
 """
 
 from __future__ import annotations
@@ -47,28 +47,28 @@ class FoundryIQ:
 
     @property
     def enabled(self) -> bool:
-        """True si hay un recurso Foundry IQ remoto configurado."""
+        """True if a remote Foundry IQ resource is configured."""
         return bool(self.endpoint and self.api_key and self.knowledge_base)
 
     def ground(self, query: str, location_stats: dict | None = None) -> str:
-        """Devuelve un bloque de grounding (texto) para anexar al prompt."""
+        """Return a grounding block (text) to append to the prompt."""
         passages: list[str] = []
         if self.enabled:
             try:
                 passages = self._retrieve_remote(query)
-            except Exception as exc:  # noqa: BLE001 - degradamos a grounding local
-                passages = [f"(Foundry IQ remoto no disponible: {type(exc).__name__})"]
+            except Exception as exc:  # noqa: BLE001 - degrade to local grounding
+                passages = [f"(remote Foundry IQ not available: {type(exc).__name__})"]
         passages += self._ground_local(location_stats)
 
         if not passages:
             return ""
         body = "\n".join(f"- {p}" for p in passages)
         return (
-            "EVIDENCIA DE GROUNDING (Foundry IQ — usala como hechos, no la "
-            f"contradigas):\n{body}"
+            "GROUNDING EVIDENCE (Foundry IQ — use it as facts, do not "
+            f"contradict it):\n{body}"
         )
 
-    # -- retrieval remoto (Azure AI Foundry IQ) -----------------------------
+    # -- remote retrieval (Azure AI Foundry IQ) -----------------------------
     def _retrieve_remote(self, query: str) -> list[str]:
         import httpx
 
@@ -78,7 +78,7 @@ class FoundryIQ:
             r = http.post(f"{self.endpoint}/retrieve", json=payload, headers=headers)
             r.raise_for_status()
             data = r.json()
-        # Toleramos varias formas de respuesta de retrieval.
+        # Tolerate several retrieval response shapes.
         items = data.get("results") or data.get("passages") or data.get("documents") or []
         out = []
         for it in items[: self.top_k]:
@@ -88,27 +88,27 @@ class FoundryIQ:
                 out.append(it.get("content") or it.get("text") or json.dumps(it, ensure_ascii=False))
         return out
 
-    # -- grounding local sobre estadistica real -----------------------------
+    # -- local grounding over real statistics -------------------------------
     def _ground_local(self, location_stats: dict | None) -> list[str]:
         if not location_stats:
             return []
         s = location_stats
         facts: list[str] = []
         if s.get("median_income") is not None:
-            facts.append(f"Ingreso mediano real del hogar: ${s['median_income']} (Census ACS5).")
+            facts.append(f"Real median household income: ${s['median_income']} (Census ACS5).")
         if s.get("unemployment_rate") is not None:
-            facts.append(f"Tasa de desempleo real: {s['unemployment_rate']}%.")
+            facts.append(f"Real unemployment rate: {s['unemployment_rate']}%.")
         if s.get("poverty_rate") is not None:
-            facts.append(f"Tasa de pobreza real: {s['poverty_rate']}%.")
+            facts.append(f"Real poverty rate: {s['poverty_rate']}%.")
         if s.get("ethnicity_distribution"):
             top = sorted(s["ethnicity_distribution"].items(), key=lambda kv: kv[1], reverse=True)
             dist = ", ".join(f"{k} {v:.1f}%" for k, v in top if v)
-            facts.append(f"Distribucion etnica real: {dist}.")
+            facts.append(f"Real ethnic distribution: {dist}.")
         if s.get("age_ranges"):
             ages = ", ".join(f"{k} {v:.1f}%" for k, v in s["age_ranges"].items())
-            facts.append(f"Distribucion etaria real: {ages}.")
+            facts.append(f"Real age distribution: {ages}.")
         if s.get("avg_education") is not None:
-            facts.append(f"Indicador educativo real (% bachelor+): {s['avg_education']}.")
+            facts.append(f"Real education indicator (% bachelor+): {s['avg_education']}.")
         return facts
 
 

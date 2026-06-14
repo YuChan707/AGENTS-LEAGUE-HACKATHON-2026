@@ -11,19 +11,19 @@ from census import Census
 from tqdm import tqdm
 from dotenv import load_dotenv
 
-# Ajusta estas importaciones a las reales de tus DTOs y Schemas
+# Adjust these imports to the real ones of your DTOs and Schemas
 from marshmallow import ValidationError
 
-# Carga las variables del .env (CENSUS_DATA_API, etc.) al entorno.
+# Loads the .env variables (CENSUS_DATA_API, etc.) into the environment.
 load_dotenv()
 
 from dtos.data_ingestors import Location, LocationEntity
 
-# Los esquemas Marshmallow son reutilizables: se instancian una vez.
+# Marshmallow schemas are reusable: they are instantiated once.
 _location_schema = Location()
 
 
-# Funciones seguras de conversión para evitar caídas por strings vacíos de la API
+# Safe conversion functions to avoid crashes due to empty strings from the API
 def safe_float(val, default=0.0):
     if val is None or str(val).strip() in ["", "-", "None"]: return default
     try:
@@ -41,17 +41,17 @@ def safe_int(val, default=0):
 
 
 def data_extractor_client():
-    # El nombre real de la variable en el .env es CENSUS_DATA_API.
+    # The real name of the variable in the .env is CENSUS_DATA_API.
     api_key = os.getenv("CENSUS_DATA_API") or os.getenv("CENSUS_API_KEY")
     if not api_key:
         raise RuntimeError(
-            "Falta la API key del Census. Define CENSUS_DATA_API en el .env "
-            "(la API del Census exige key desde mayo 2026)."
+            "Missing Census API key. Define CENSUS_DATA_API in the .env "
+            "(the Census API requires a key since May 2026)."
         )
     return Census(key=api_key)
 
 
-# Variables que pedimos a cada dataset (constantes a nivel de módulo).
+# Variables we request from each dataset (module-level constants).
 VARS_BASICS = (
     'B01001_001E', 'B01001_002E', 'B01001_026E', 'B19013_001E',
     'B25010_001E', 'B25077_001E', 'B03002_003E', 'B03002_004E',
@@ -61,25 +61,25 @@ VARS_BASICS = (
 )
 VARS_SUBJECT = ('S2301_C04_001E', 'S1701_C03_001E', 'S1501_C02_015E')
 
-# Nombre de la columna geográfica que devuelve el Census para consultas ZCTA.
+# Name of the geographic column that the Census returns for ZCTA queries.
 ZCTA_KEY = "zip code tabulation area"
 
 
 async def fetch_census_tables(client, vars_basics=VARS_BASICS, vars_subject=VARS_SUBJECT):
-    """Descarga TODOS los ZCTA de una sola vez (2 requests en total, no 2 por ZIP).
+    """Downloads ALL ZCTA at once (2 requests in total, not 2 per ZIP).
 
-    Devuelve dos dicts indexados por código ZIP para cruzar luego en memoria.
+    Returns two dicts indexed by ZIP code to cross-reference later in memory.
     """
     loop = asyncio.get_running_loop()
-    # El comodín '*' trae todos los ZCTA en una sola petición por dataset.
+    # The wildcard '*' brings all ZCTA in a single request per dataset.
     geo_config = {'for': f'{ZCTA_KEY}:*'}
 
     def call_basics():
         return client.acs5.get(tuple(vars_basics), geo_config)
 
     def call_subject():
-        # Las tablas "subject" (S2301..., S1701..., S1501...) viven en el
-        # cliente acs5st (dataset acs5/subject), NO en client.acs5.subject.
+        # The "subject" tables (S2301..., S1701..., S1501...) live in the
+        # acs5st client (dataset acs5/subject), NOT in client.acs5.subject.
         return client.acs5st.get(tuple(vars_subject), geo_config)
 
     res_basico, res_subject = await asyncio.gather(
@@ -93,14 +93,14 @@ async def fetch_census_tables(client, vars_basics=VARS_BASICS, vars_subject=VARS
 
 
 def build_location_metadata(data_b: dict, data_s: dict) -> dict:
-    """Parsea los registros ya descargados de un ZIP. No hace ninguna request."""
+    """Parses the already-downloaded records of a ZIP. Makes no request."""
     if not data_b or not data_s:
         return {}
 
     try:
-        # --- Procesamiento Demográfico ---
+        # --- Demographic Processing ---
         total_pop = safe_float(data_b.get('B01001_001E'), default=1.0)
-        if total_pop == 0: total_pop = 1.0  # Evitar división por cero
+        if total_pop == 0: total_pop = 1.0  # Avoid division by zero
 
         pct_male = (safe_float(data_b.get('B01001_002E')) / total_pop) * 100
         pct_female = (safe_float(data_b.get('B01001_026E')) / total_pop) * 100
@@ -146,21 +146,21 @@ def build_location_metadata(data_b: dict, data_s: dict) -> dict:
         return entity_data
 
     except Exception as e:
-        # Incluimos el tipo para no volver a ocultar errores como AttributeError.
-        print(f"Error parseando metadatos: {type(e).__name__}: {e}")
+        # We include the type so we don't hide errors like AttributeError again.
+        print(f"Error parsing metadata: {type(e).__name__}: {e}")
         return {}
 
 
 def create_location(_logger, row, basics_by_zip: dict, subject_by_zip: dict) -> LocationEntity | None:
     zip_code = str(row.zip)
-    # Cruce en memoria: cero requests aquí, los datos ya se descargaron en bloque.
+    # In-memory cross-reference: zero requests here, the data was already downloaded in bulk.
     metadata = build_location_metadata(
         basics_by_zip.get(zip_code, {}),
         subject_by_zip.get(zip_code, {}),
     )
 
-    # Construimos el payload como dict y dejamos que Marshmallow valide y
-    # produzca el LocationEntity vía @post_load (load(), no asignar atributos).
+    # We build the payload as a dict and let Marshmallow validate and
+    # produce the LocationEntity via @post_load (load(), not assigning attributes).
     payload = {
         "location_id": str(uuid.uuid4()),
         "coordinates": {
@@ -180,23 +180,23 @@ def create_location(_logger, row, basics_by_zip: dict, subject_by_zip: dict) -> 
     try:
         location = _location_schema.load(payload)
     except ValidationError as err:
-        _logger.warning(f"Zip {row.zip} descartado por validación: {err.messages}")
+        _logger.warning(f"Zip {row.zip} discarded due to validation: {err.messages}")
         return None
 
-    _logger.info(f"Nueva Ubicación Creada para Zip {row.zip}")
+    _logger.info(f"New Location Created for Zip {row.zip}")
     return location
 
 
 async def process_sitemaps(_logger, dc_client, sitemap_zip_codes):
-    # 2 requests en total: descargamos todos los ZCTA una sola vez.
-    _logger.info("Descargando tablas del Census (2 requests para todos los ZCTA)...")
+    # 2 requests in total: we download all ZCTA only once.
+    _logger.info("Downloading Census tables (2 requests for all ZCTA)...")
     basics_by_zip, subject_by_zip = await fetch_census_tables(dc_client)
     _logger.info(
-        f"Tablas descargadas: {len(basics_by_zip)} ZCTA basics, "
+        f"Tables downloaded: {len(basics_by_zip)} ZCTA basics, "
         f"{len(subject_by_zip)} ZCTA subject."
     )
 
-    # El resto es CPU/memoria: construimos y validamos cada Location sin más requests.
+    # The rest is CPU/memory: we build and validate each Location without further requests.
     locations = []
     for row in tqdm(sitemap_zip_codes.itertuples(index=True), desc="SitemapProcessing"):
         loc = create_location(_logger, row, basics_by_zip, subject_by_zip)
@@ -205,23 +205,26 @@ async def process_sitemaps(_logger, dc_client, sitemap_zip_codes):
     return locations
 
 
-# Carpeta de persistencia: data_ingestor/data/locations/ (un JSON por zip_code).
+# Persistence folder: data_ingestor/data/locations/ (one JSON per zip_code).
 LOCATIONS_DIR = Path(__file__).resolve().parent / "data" / "locations"
 
 
-def persist_locations(_logger, locations) -> Path:
-    """Persiste cada LocationEntity como JSON por zip_code + un indice.
+def persist_locations(_logger, locations) -> list[dict]:
+    """Persists each LocationEntity as JSON per zip_code + an index.
 
-    Se ejecuta cuando termina de procesar TODOS los grupos por zip_code. Vuelca
-    la entidad validada via Marshmallow (.dump) para conservar el contrato.
+    Runs when it finishes processing ALL groups by zip_code. Dumps the
+    Marshmallow-validated entity (.dump) to preserve the contract. Returns the
+    dumped records so they can also be uploaded to the cloud DB.
     """
     LOCATIONS_DIR.mkdir(parents=True, exist_ok=True)
+    records = []
     index = []
     for loc in locations:
         record = _location_schema.dump(loc)
         zip_code = record.get("zip_code") or "unknown"
         path = LOCATIONS_DIR / f"{zip_code}.json"
         path.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
+        records.append(record)
         index.append(
             {
                 "zip_code": zip_code,
@@ -236,22 +239,52 @@ def persist_locations(_logger, locations) -> Path:
         json.dumps({"count": len(index), "locations": index}, ensure_ascii=False, indent=2),
         encoding="utf-8",
     )
-    _logger.info(f"Persistidas {len(index)} ubicaciones en {LOCATIONS_DIR}")
-    return LOCATIONS_DIR
+    _logger.info(f"Persisted {len(index)} locations in {LOCATIONS_DIR}")
+    return records
+
+
+async def upload_to_cloud(_logger, records: list[dict]) -> None:
+    """Uploads the locations to the Azure/Supabase Postgres `locations` table.
+
+    Controlled by INGESTOR_UPLOAD (default "auto"): uploads when a DB URL is
+    configured, skips with a warning otherwise. Set INGESTOR_UPLOAD=0 to disable.
+    A DB failure is logged but does NOT abort the ingestion (JSON is already saved).
+    """
+    try:
+        from db import database_configured, upload_locations
+    except ImportError:  # when run as `python -m data_ingestor.main` from repo root
+        from data_ingestor.db import database_configured, upload_locations
+
+    flag = os.getenv("INGESTOR_UPLOAD", "auto").lower()
+    if flag in ("0", "false", "no", "off"):
+        _logger.info("DB upload disabled (INGESTOR_UPLOAD=%s).", flag)
+        return
+    if not database_configured():
+        _logger.warning(
+            "No DATABASE_URL/DATABASE_POOL_URL set -> skipping Azure upload "
+            "(locations are saved as JSON). See containers_env/.env.example."
+        )
+        return
+    try:
+        n = await upload_locations(records)
+        _logger.info("Uploaded %d locations to the cloud Postgres (locations table).", n)
+    except Exception as exc:  # noqa: BLE001 - do not lose the run over a DB hiccup
+        _logger.error("Azure upload failed (%s: %s). JSON copy is intact.", type(exc).__name__, exc)
 
 
 async def main(_logger) -> None:
-    _logger.info("Inicializando Census Bureau Client")
+    _logger.info("Initializing Census Bureau Client")
     dc_client = data_extractor_client()
 
-    # Carga tu CSV de datos locales
+    # Load your local data CSV
     sitemap_zip_codes = pd.read_csv("data/nyc_zip_codes.csv")
 
     resultant = await process_sitemaps(_logger, dc_client, sitemap_zip_codes)
-    _logger.info(f"Proceso finalizado. {len(resultant)} entidades Marshmallow listas.")
+    _logger.info(f"Process finished. {len(resultant)} Marshmallow entities ready.")
 
-    # Termino de procesar todos los grupos por zip_code -> persistir.
-    persist_locations(_logger, resultant)
+    # Finished processing all groups by zip_code -> persist locally + upload to Azure.
+    records = persist_locations(_logger, resultant)
+    await upload_to_cloud(_logger, records)
 
 
 if __name__ == "__main__":

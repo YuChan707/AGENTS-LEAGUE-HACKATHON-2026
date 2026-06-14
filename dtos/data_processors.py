@@ -1,35 +1,35 @@
 from marshmallow import Schema, fields, validate
 
-#   Data Processor: aqui definimos las entidades de SALIDA. Combinamos la data cruda (Location,
-# DemographicGroup) con la data sintetica (SegmentParticularity, Psychographic/Behavioral) para
-# que una LLM pueda extraer las reacciones generales de un segmento frente a un producto/seccion.
+#   Data Processor: here we define the OUTPUT entities. We combine the raw data (Location,
+# DemographicGroup) with the synthetic data (SegmentParticularity, Psychographic/Behavioral) so
+# that an LLM can extract the general reactions of a segment toward a product/section.
 
 ASSET_TYPES = ("document", "presentation", "spreadsheet", "pdf", "other")
 
 
 # ---------------------------------------------------------------------------
-# Audiencia: un segmento accionable = demografia + particularidades + psico + conducta
+# Audience: an actionable segment = demographics + particularities + psycho + behavior
 # ---------------------------------------------------------------------------
 class AudienceSegment(Schema):
     class Meta:
         ordered = True
 
     segment_id = fields.UUID(required=True)
-    label = fields.String(required=True)                 # nombre legible del segmento
+    label = fields.String(required=True)                 # readable name of the segment
 
-    # Referencias por ID a las entidades del ingestor (relaciones, no nesteo pesado)
+    # References by ID to the ingestor entities (relations, not heavy nesting)
     location_id = fields.UUID(required=True)
     demographic_group_id = fields.UUID(required=True)
     psychographic_group_id = fields.UUID()
     behavioral_group_id = fields.UUID()
     particularity_ids = fields.List(fields.UUID())
 
-    estimated_reach = fields.Integer(validate=validate.Range(min=0))  # personas alcanzables
-    confidence = fields.Float(validate=validate.Range(min=0, max=1))  # confianza del armado sintetico
+    estimated_reach = fields.Integer(validate=validate.Range(min=0))  # reachable people
+    confidence = fields.Float(validate=validate.Range(min=0, max=1))  # confidence of the synthetic assembly
 
 
 # ---------------------------------------------------------------------------
-# Asset: el archivo M365 que OnLooker analiza
+# Asset: the M365 file that OnLooker analyzes
 # ---------------------------------------------------------------------------
 class ProjectAsset(Schema):
     class Meta:
@@ -38,46 +38,46 @@ class ProjectAsset(Schema):
     asset_id = fields.UUID(required=True)
     name = fields.String(required=True)
     asset_type = fields.String(required=True, validate=validate.OneOf(ASSET_TYPES))
-    summary = fields.String()                            # resumen del contenido
-    language = fields.String()                           # idioma del documento
-    target_segment_ids = fields.List(fields.UUID())      # audiencias objetivo (AudienceSegment)
-    source_uri = fields.String()                         # ubicacion del archivo (M365 / Drive)
+    summary = fields.String()                            # summary of the content
+    language = fields.String()                           # language of the document
+    target_segment_ids = fields.List(fields.UUID())      # target audiences (AudienceSegment)
+    source_uri = fields.String()                         # location of the file (M365 / Drive)
 
 
 # ---------------------------------------------------------------------------
-# Reaccion: lo que produce la LLM = como reacciona un segmento a un asset/seccion
+# Reaction: what the LLM produces = how a segment reacts to an asset/section
 # ---------------------------------------------------------------------------
 class ReactionProfile(Schema):
     class Meta:
         ordered = True
 
     reaction_id = fields.UUID(required=True)
-    asset_id = fields.UUID(required=True)                # a que asset reacciona
-    segment_id = fields.UUID(required=True)              # que audiencia reacciona
-    section = fields.String()                            # seccion/slide/parrafo especifico (opcional)
+    asset_id = fields.UUID(required=True)                # which asset it reacts to
+    segment_id = fields.UUID(required=True)              # which audience reacts
+    section = fields.String()                            # specific section/slide/paragraph (optional)
 
-    # Scores normalizados 0-1
+    # Scores normalized 0-1
     sentiment_score = fields.Float(required=True, validate=validate.Range(min=0, max=1))
     comprehension_score = fields.Float(required=True, validate=validate.Range(min=0, max=1))
     cultural_fit_score = fields.Float(required=True, validate=validate.Range(min=0, max=1))
     engagement_likelihood = fields.Float(required=True, validate=validate.Range(min=0, max=1))
 
-    # Metricas de comportamiento calculadas (claves = BEHAVIOR_METRICS de
-    # data_ingestors). Permite ir mas alla de los 4 scores fijos de arriba.
+    # Computed behavior metrics (keys = BEHAVIOR_METRICS from
+    # data_ingestors). Allows going beyond the 4 fixed scores above.
     metric_scores = fields.Dict(
         keys=fields.String(),
         values=fields.Float(validate=validate.Range(min=0, max=1)),
     )
-    # Atribucion: cuanto aporto cada factor (edad/genero/etnia/income...) a la
-    # reaccion. Hace explicable el resultado. Ej: {"income": -0.18, "age": +0.07}
+    # Attribution: how much each factor (age/gender/ethnicity/income...) contributed to the
+    # reaction. Makes the result explainable. E.g.: {"income": -0.18, "age": +0.07}
     factor_attribution = fields.Dict(keys=fields.String(), values=fields.Float())
-    # Trazabilidad al modelo estadistico: que BehaviorFormula se aplicaron.
+    # Traceability to the statistical model: which BehaviorFormula were applied.
     applied_formula_ids = fields.List(fields.UUID())
 
-    # Feedback cualitativo accionable
-    strengths = fields.List(fields.String())             # que funciona bien
-    risks = fields.List(fields.String())                 # que puede fallar / ofender / confundir
-    recommendations = fields.List(fields.String())       # como mejorarlo para este segmento
+    # Actionable qualitative feedback
+    strengths = fields.List(fields.String())             # what works well
+    risks = fields.List(fields.String())                 # what may fail / offend / confuse
+    recommendations = fields.List(fields.String())       # how to improve it for this segment
 
     confidence = fields.Float(validate=validate.Range(min=0, max=1))
     generated_by = fields.String(load_default="llm")

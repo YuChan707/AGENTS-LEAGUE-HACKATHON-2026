@@ -1,18 +1,18 @@
-"""Persistencia en archivos JSON para el pipeline de audiencia.
+"""JSON file persistence for the audience pipeline.
 
-Eleccion deliberada para el hackathon: archivos JSON, cero infraestructura,
-corre en cualquier maquina y es facil de inspeccionar/demostrar. Los puntos de
-guardado estan aislados aqui para poder cambiar a Postgres / ChromaDB / Dapr
-state store sin tocar la logica del pipeline.
+A deliberate choice for the hackathon: JSON files, zero infrastructure, runs on
+any machine and is easy to inspect/demo. The save points are isolated here so we
+can switch to Postgres / ChromaDB / Dapr state store without touching the
+pipeline logic.
 
-Layout (raiz del repo, override con ONLOOKER_DATA_DIR):
+Layout (repo root, override with ONLOOKER_DATA_DIR):
 
-    data_ingestor/data/locations/<zip>.json      <- LocationEntity por zip_code
-    data_ingestor/data/locations/_index.json     <- indice {zip, location_id, city}
+    data_ingestor/data/locations/<zip>.json      <- LocationEntity by zip_code
+    data_ingestor/data/locations/_index.json     <- index {zip, location_id, city}
     data_processor/output/behavior_model/<zip>.json
     data_processor/output/field_groups/<zip>.json
     data_processor/output/group_profiles/<zip>.json
-    data_processor/output/audience_specs/<zip>.json   <- spec general consolidada
+    data_processor/output/audience_specs/<zip>.json   <- consolidated general spec
 """
 
 from __future__ import annotations
@@ -29,7 +29,7 @@ PROCESSOR_OUT_DIR = _ROOT / "data_processor" / "output"
 
 def _dump(path: Path, obj) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
-    # default=str serializa UUID y date (marshmallow los deserializa a objetos).
+    # default=str serializes UUID and date (marshmallow deserializes them to objects).
     path.write_text(json.dumps(obj, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     return path
 
@@ -42,7 +42,7 @@ def _load(path: Path):
 # Locations (data_ingestor)
 # ---------------------------------------------------------------------------
 def save_locations(locations: list[dict]) -> Path:
-    """Persiste una lista de Locations (dicts) por zip_code + un indice."""
+    """Persist a list of Locations (dicts) by zip_code + an index."""
     index = []
     for loc in locations:
         zip_code = loc.get("zip_code") or "unknown"
@@ -61,7 +61,7 @@ def save_locations(locations: list[dict]) -> Path:
 
 
 def load_locations() -> list[dict]:
-    """Carga todas las Locations persistidas (ignora el indice)."""
+    """Load all persisted Locations (ignores the index)."""
     if not LOCATIONS_DIR.exists():
         return []
     out = []
@@ -78,14 +78,14 @@ def load_location(zip_code: str) -> dict | None:
 
 
 # ---------------------------------------------------------------------------
-# Salidas del data_processor
+# data_processor outputs
 # ---------------------------------------------------------------------------
 def save_processor_output(subdir: str, key: str, obj) -> Path:
     return _dump(PROCESSOR_OUT_DIR / subdir / f"{key}.json", obj)
 
 
 def save_audience_specs(zip_code: str, spec: dict) -> Path:
-    """Spec general consolidada de los grupos de audiencia de una ubicacion."""
+    """Consolidated general spec of a location's audience groups."""
     return save_processor_output("audience_specs", zip_code, spec)
 
 

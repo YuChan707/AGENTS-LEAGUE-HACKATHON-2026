@@ -1,0 +1,127 @@
+# OnLooker — full project stack.
+#
+#   make up           # infra (postgres, chromadb, ollama, redis) + backend + ui
+#   make ingest       # run data_ingestor once  (Census -> locations table)
+#   make process      # run data_processor once (synthetic audience)
+#
+# By default the apps talk to the LOCAL `postgres` service (init.sql is applied
+# automatically on first start). To target Azure/Supabase instead, comment out
+# the `postgres` service + its depends_on, and drop the DATABASE_* overrides so
+# the apps read DATABASE_POOL_URL from your .env.
+
+services:
+  # ----------------------------------------------------------------- infra ---
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: onlooker
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # Auto-create every entity table on first init.
+      - ./containers_env/postgresql-db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d onlooker"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  chromadb:
+    image: chromadb/chroma:latest
+    ports:
+      - "8001:8000"
+    volumes:
+      - ./chroma_data:/chroma/chroma
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    # Pull the model once it is up:  make model-pull
+
+  # ------------------------------------------------------------------ apps ---
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/onlooker
+      DATABASE_POOL_URL: ""
+      DB_SSL: disable
+      CHROMA_HOST: chromadb
+      CHROMA_PORT: "8000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      chromadb:
+        condition: service_started
+
+  ui-onlooker:
+    build:
+      context: ./ui-onlooker
+      dockerfile: Dockerfile
+    environment:
+      NEXT_PUBLIC_API_URL: http://localhost:8000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+  # ------------------------------------------------------- one-shot jobs ----
+  # Run on demand (profile "jobs"): `make ingest`, `make process`.
+  data_ingestor:
+    build:
+      context: ./data_ingestor
+      dockerfile: Dockerfile
+    profiles: ["jobs"]
+    env_file:
+      - .env
+      - data_ingestor/.env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/onlooker
+      DATABASE_POOL_URL: ""
+      DB_SSL: disable
+      INGESTOR_UPLOAD: "auto"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  data_processor:
+    build:
+      context: .
+      dockerfile: data_processor/Dockerfile
+    profiles: ["jobs"]
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql+asyncpg://postgres:postgres@postgres:5432/onlooker
+      DATABASE_POOL_URL: ""
+      DB_SSL: disable
+      LLM_TRANSPORT: http
+      LLAMA_BASE_URL: http://ollama:11434/v1
+      LLAMA_MODEL: llama3.2:3b
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    restart: "no"
+
+volumes:
+  pgdata:
+  ollama_data:

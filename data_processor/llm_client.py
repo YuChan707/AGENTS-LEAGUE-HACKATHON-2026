@@ -1,26 +1,27 @@
-"""Cliente de LLM para el data_processor.
+"""LLM client for the data_processor.
 
-La audiencia sintetica se genera con un modelo LLAMA 3B *dockerizado*. Este
-cliente abstrae COMO se llega a ese modelo y degrada con elegancia para que el
-pipeline corra siempre (incluso sin sidecar de Dapr ni contenedor levantado):
+The synthetic audience is generated with a *dockerized* LLAMA 3B model. This
+client abstracts HOW that model is reached and degrades gracefully so that the
+pipeline always runs (even without a Dapr sidecar or a running container):
 
-  transport = "dapr"  -> Dapr Conversation API (converse_alpha1) contra un
-                          componente `conversation.*` que apunta al Llama
-                          dockerizado. Es el camino "Llama via dapr agents".
-  transport = "http"  -> endpoint OpenAI-compatible del contenedor (Ollama,
+  transport = "dapr"  -> Dapr Conversation API (converse_alpha1) against a
+                          `conversation.*` component that points at the
+                          dockerized Llama. This is the "Llama via dapr agents"
+                          path.
+  transport = "http"  -> OpenAI-compatible endpoint of the container (Ollama,
                           llama.cpp server, vLLM...). POST /chat/completions.
-  transport = "mock"  -> sin red: el llamador provee un fixture valido. Sirve
-                          para demo/CI y para no romper si el modelo no esta.
+  transport = "mock"  -> no network: the caller provides a valid fixture. Useful
+                          for demo/CI and to avoid breaking if the model is down.
 
-`transport = "auto"` (default) intenta dapr -> http y, si ambos fallan, deja
-que el llamador caiga al mock. La seleccion se controla por entorno:
+`transport = "auto"` (default) tries dapr -> http and, if both fail, lets the
+caller fall back to the mock. The selection is controlled by the environment:
 
     LLM_TRANSPORT      auto | dapr | http | mock        (default: auto)
-    DAPR_LLM_COMPONENT nombre del componente Dapr        (default: llama)
-    LLAMA_BASE_URL     base OpenAI-compatible            (default: http://localhost:11434/v1)
-    LLAMA_MODEL        nombre del modelo                 (default: llama3.2:3b)
-    LLAMA_API_KEY      token (Ollama no lo exige)        (default: ollama)
-    LLM_TEMPERATURE    temperatura de muestreo           (default: 0.4)
+    DAPR_LLM_COMPONENT Dapr component name               (default: llama)
+    LLAMA_BASE_URL     OpenAI-compatible base            (default: http://localhost:11434/v1)
+    LLAMA_MODEL        model name                        (default: llama3.2:3b)
+    LLAMA_API_KEY      token (Ollama does not require it) (default: ollama)
+    LLM_TEMPERATURE    sampling temperature              (default: 0.4)
 """
 
 from __future__ import annotations
@@ -32,7 +33,7 @@ from dataclasses import dataclass
 
 
 class LLMUnavailable(RuntimeError):
-    """Ningun transporte real (dapr/http) pudo responder."""
+    """No real transport (dapr/http) was able to respond."""
 
 
 def _env(name: str, default: str) -> str:
@@ -41,20 +42,20 @@ def _env(name: str, default: str) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Extraccion de JSON: los modelos pequenos suelen envolver el JSON en ``` o
-# anteponer texto. Recuperamos el primer objeto/array balanceado.
+# JSON extraction: small models often wrap the JSON in ``` or prepend text.
+# We recover the first balanced object/array.
 # ---------------------------------------------------------------------------
 _FENCE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.DOTALL)
 
 
 def extract_json(text: str):
-    """Devuelve el primer objeto/array JSON encontrado en `text`.
+    """Return the first JSON object/array found in `text`.
 
-    Tolera fences markdown y prosa antes/despues. Lanza ValueError si no hay
-    JSON parseable.
+    Tolerates markdown fences and prose before/after. Raises ValueError if there
+    is no parseable JSON.
     """
     if not text or not text.strip():
-        raise ValueError("respuesta vacia del modelo")
+        raise ValueError("empty response from the model")
 
     candidates = []
     m = _FENCE.search(text)
@@ -68,7 +69,7 @@ def extract_json(text: str):
             return json.loads(chunk)
         except json.JSONDecodeError:
             pass
-        # Buscar el primer { o [ y recortar hasta su cierre balanceado.
+        # Find the first { or [ and trim up to its balanced close.
         start = min(
             [i for i in (chunk.find("{"), chunk.find("[")) if i != -1],
             default=-1,
@@ -81,11 +82,11 @@ def extract_json(text: str):
                 return json.loads(snippet)
             except json.JSONDecodeError:
                 continue
-    raise ValueError("no se encontro JSON valido en la respuesta del modelo")
+    raise ValueError("no valid JSON found in the model's response")
 
 
 def _balanced_slice(text: str, start: int) -> str | None:
-    """Recorta desde `start` hasta cerrar el delimitador, respetando strings."""
+    """Trim from `start` until the delimiter closes, respecting strings."""
     open_ch = text[start]
     close_ch = "}" if open_ch == "{" else "]"
     depth = 0
@@ -114,7 +115,7 @@ def _balanced_slice(text: str, start: int) -> str | None:
 
 @dataclass
 class LlamaClient:
-    """Cliente unificado hacia el Llama dockerizado."""
+    """Unified client toward the dockerized Llama."""
 
     transport: str = ""
     model: str = ""
@@ -132,13 +133,14 @@ class LlamaClient:
         if not self.temperature:
             self.temperature = float(_env("LLM_TEMPERATURE", "0.4"))
 
-    # -- API publica --------------------------------------------------------
+    # -- public API ---------------------------------------------------------
     def complete(self, system: str, user: str) -> str:
-        """Devuelve el texto crudo del modelo. Lanza LLMUnavailable si no hay
-        transporte real disponible (el llamador decide si cae al mock)."""
-        # En "auto" solo intentamos Dapr si hay un sidecar (evita el health check
-        # de 60s cuando no se corre con `dapr run`). En "dapr" explicito siempre
-        # se intenta, pero con health check rapido para fallar pronto.
+        """Return the raw text from the model. Raises LLMUnavailable if no real
+        transport is available (the caller decides whether to fall back to the
+        mock)."""
+        # In "auto" we only try Dapr if there is a sidecar (avoids the 60s health
+        # check when not running with `dapr run`). In explicit "dapr" it is always
+        # tried, but with a fast health check to fail early.
         auto = ["http"]
         if os.getenv("DAPR_GRPC_PORT") or os.getenv("DAPR_HTTP_PORT"):
             auto = ["dapr", "http"]
@@ -156,19 +158,19 @@ class LlamaClient:
                     return self._via_dapr(system, user)
                 if t == "http":
                     return self._via_http(system, user)
-            except Exception as exc:  # noqa: BLE001 - degradamos a la siguiente opcion
+            except Exception as exc:  # noqa: BLE001 - degrade to the next option
                 errors.append(f"{t}: {type(exc).__name__}: {exc}")
         raise LLMUnavailable(
-            f"sin transporte LLM disponible (transport={self.transport}). " + " | ".join(errors)
+            f"no LLM transport available (transport={self.transport}). " + " | ".join(errors)
         )
 
     @property
     def is_mock(self) -> bool:
         return self.transport == "mock"
 
-    # -- Transportes --------------------------------------------------------
+    # -- Transports ---------------------------------------------------------
     def _via_dapr(self, system: str, user: str) -> str:
-        # Health check rapido: si el sidecar no esta, fallamos en segundos (no 60s).
+        # Fast health check: if the sidecar is down, we fail in seconds (not 60s).
         os.environ.setdefault("DAPR_HEALTH_TIMEOUT", _env("DAPR_HEALTH_TIMEOUT", "5"))
         from dapr.clients import DaprClient
         from dapr.clients.grpc.conversation import ConversationInput
@@ -186,7 +188,7 @@ class LlamaClient:
         parts = [o.result for o in (resp.outputs or []) if getattr(o, "result", None)]
         text = "\n".join(parts).strip()
         if not text:
-            raise LLMUnavailable("Dapr devolvio respuesta vacia")
+            raise LLMUnavailable("Dapr returned an empty response")
         return text
 
     def _via_http(self, system: str, user: str) -> str:
@@ -210,7 +212,7 @@ class LlamaClient:
             data = r.json()
         text = (data.get("choices") or [{}])[0].get("message", {}).get("content", "").strip()
         if not text:
-            raise LLMUnavailable("endpoint HTTP devolvio respuesta vacia")
+            raise LLMUnavailable("HTTP endpoint returned an empty response")
         return text
 
 

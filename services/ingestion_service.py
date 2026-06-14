@@ -1,13 +1,11 @@
 
-import os, asyncio
+import asyncio
 from datetime import datetime
-from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from models.database import (
     AsyncSessionLocal,
     IngestionEventModel,
-    AnalyticModel,
-    AudienceModel
+    AnalyticModel
 )
 
 class DataIngestionService:
@@ -37,7 +35,6 @@ class DataIngestionService:
     async def _process(self, event_id: int, event: dict) -> None:
         async with AsyncSessionLocal() as db:
             payload = event.get("payload", {})
-            agent   = event.get("agent", "")
 
             # Build analytic record from whatever agent fired
             analytic = AnalyticModel(

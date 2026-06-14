@@ -1,6 +1,5 @@
 
 import os
-import uuid
 from datetime import datetime
 from azure.storage.blobs import BlobServiceClient, ContentSettings
 from dotenv import load_dotenv

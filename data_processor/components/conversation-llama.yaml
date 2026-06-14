@@ -1,16 +1,16 @@
-# Componente Dapr Conversation -> Llama 3B DOCKERIZADO.
+# Dapr Conversation component -> DOCKERIZED Llama 3B.
 #
-# Es el camino "Llama via dapr agents": data_processor/llm_client.py llama a
-# converse_alpha1(name="llama", ...) y Dapr enruta al modelo. El contenedor
-# expone un endpoint OpenAI-compatible (Ollama / llama.cpp server / vLLM),
-# por eso usamos el componente conversation.openai con `endpoint` apuntando al
-# contenedor en vez de a api.openai.com.
+# This is the "Llama via dapr agents" path: data_processor/llm_client.py calls
+# converse_alpha1(name="llama", ...) and Dapr routes to the model. The container
+# exposes an OpenAI-compatible endpoint (Ollama / llama.cpp server / vLLM),
+# which is why we use the conversation.openai component with `endpoint` pointing
+# at the container instead of api.openai.com.
 #
-# Levantar el modelo (ejemplo con Ollama dockerizado):
+# Start the model (example with dockerized Ollama):
 #   docker run -d -p 11434:11434 --name llama ollama/ollama
 #   docker exec -it llama ollama pull llama3.2:3b
 #
-# Correr el processor con el sidecar Dapr:
+# Run the processor with the Dapr sidecar:
 #   dapr run --app-id data-processor \
 #            --resources-path data_processor/components \
 #            -- python -m data_processor --transport dapr
@@ -23,10 +23,10 @@ spec:
   version: v1
   metadata:
     - name: key
-      value: "ollama"            # Ollama no valida el token; cualquier valor sirve.
+      value: "ollama"            # Ollama does not validate the token; any value works.
     - name: model
       value: "llama3.2:3b"
     - name: endpoint
-      value: "http://localhost:11434/v1"   # endpoint OpenAI-compatible del contenedor
+      value: "http://localhost:11434/v1"   # OpenAI-compatible endpoint of the container
     - name: cacheTTL
       value: "10m"

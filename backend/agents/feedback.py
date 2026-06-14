@@ -131,7 +131,7 @@ async def simulate_feedback(
         raw = response.choices[0].message.content.strip()
         clean = raw.replace("```json", "").replace("```", "").strip()
         payload = json.loads(clean)
-    except Exception as e:
+    except Exception:
         payload = {
             "feedback_type": "supportive",
             "relevance_score": 5,

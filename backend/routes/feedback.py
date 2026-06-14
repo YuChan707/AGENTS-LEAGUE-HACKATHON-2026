@@ -1,4 +1,3 @@
-import uuid
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 from agents.feedback import simulate_feedback, get_available_feedback_settings

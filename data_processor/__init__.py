@@ -1,32 +1,32 @@
-"""Data processor: convierte la data CRUDA real (Census, por zip_code) en grupos
-de audiencia SINTETICOS de comportamiento online, usando un Llama 3B dockerizado.
+"""Data processor: converts the real RAW data (Census, by zip_code) into SYNTHETIC
+audience groups of online behavior, using a dockerized Llama 3B.
 
-Pipeline por ubicacion (zip_code):
+Pipeline per location (zip_code):
 
-  1. MODELO ESTADISTICO  (BEHAVIOR_MODEL_PROMPT -> list[BehaviorFormula])
-       Variables estadisticas de comportamiento y COMO cambian segun los rasgos:
-       genero, edad, income/clase social (low..high), etnia y educacion.
+  1. STATISTICAL MODEL  (BEHAVIOR_MODEL_PROMPT -> list[BehaviorFormula])
+       Statistical behavior variables and HOW they change according to the traits:
+       gender, age, income/social class (low..high), ethnicity and education.
 
-  2. GRUPOS POR CAMPO/TEMA  (FIELD_GROUPS_PROMPT -> list[FieldBehaviorGroup])
-       Audiencias orientadas a temas (tecnologia, entretenimiento, educacion,
-       salud, finanzas, politica, familia) con su comportamiento caracteristico.
+  2. GROUPS BY FIELD/TOPIC  (FIELD_GROUPS_PROMPT -> list[FieldBehaviorGroup])
+       Audiences oriented to topics (technology, entertainment, education,
+       health, finance, politics, family) with their characteristic behavior.
 
-  3. GRUPOS VARIADOS  (prompt AUTOMATIZADO -> GroupBehaviorProfile por combinacion)
-       Se enumeran combinaciones diversas de factores y, para cada una, se piden
-       los niveles de comportamiento como RANGOS (min/esperado/max) = los SCORES
-       de salida de la audiencia.
+  3. VARIED GROUPS  (AUTOMATED prompt -> GroupBehaviorProfile per combination)
+       Diverse combinations of factors are enumerated and, for each one, the
+       behavior levels are requested as RANGES (min/expected/max) = the audience
+       output SCORES.
 
-  4. SPEC CONSOLIDADA + SCORES AGREGADOS  -> se persiste todo por zip_code.
+  4. CONSOLIDATED SPEC + AGGREGATED SCORES  -> everything is persisted by zip_code.
 
-El acceso al modelo (Dapr Conversation API / endpoint OpenAI-compatible / mock)
-lo abstrae `llm_client.LlamaClient`; el grounding en evidencia real lo aporta
-`foundry_iq.FoundryIQ`. Si no hay modelo disponible, se cae a fixtures validos
-para que el pipeline corra siempre.
+Access to the model (Dapr Conversation API / OpenAI-compatible endpoint / mock)
+is abstracted by `llm_client.LlamaClient`; grounding in real evidence is provided by
+`foundry_iq.FoundryIQ`. If no model is available, it falls back to valid fixtures
+so that the pipeline always runs.
 
-Uso:
-    python -m data_processor                 # procesa lo persistido por el ingestor
-    python -m data_processor --limit 3       # solo 3 ubicaciones
-    LLM_TRANSPORT=mock python -m data_processor   # sin modelo real (demo/CI)
+Usage:
+    python -m data_processor                 # processes what the ingestor persisted
+    python -m data_processor --limit 3       # only 3 locations
+    LLM_TRANSPORT=mock python -m data_processor   # without a real model (demo/CI)
 """
 
 from __future__ import annotations
@@ -54,11 +54,11 @@ from .prompts import (
 
 logger = logging.getLogger("DataProcessor")
 
-# Buckets etarios para variar los grupos.
+# Age buckets to vary the groups.
 AGE_BUCKETS = ((18, 24), (25, 34), (35, 44), (45, 54), (55, 64), (65, 120))
 
-# Metricas nucleo para los perfiles de grupo (el modelo completo cubre todas;
-# para los grupos variados usamos un subset accionable y mas barato de generar).
+# Core metrics for the group profiles (the full model covers all of them;
+# for the varied groups we use an actionable subset that is cheaper to generate).
 CORE_METRICS = (
     "adoption_propensity",
     "engagement_likelihood",
@@ -68,7 +68,7 @@ CORE_METRICS = (
     "sharing_propensity",
 )
 
-# Temas principales primero (los que pide el usuario), luego el resto.
+# Main topics first (the ones the user asks for), then the rest.
 _PRIORITY_FIELDS = ("technology", "entertainment", "education", "health")
 TOPIC_FIELDS = _PRIORITY_FIELDS + tuple(f for f in FIELD_DOMAINS if f not in _PRIORITY_FIELDS)
 
@@ -82,7 +82,7 @@ _EDU_BY_INCOME = {
 
 
 # ---------------------------------------------------------------------------
-# Generacion validada (mock-aware, con grounding y reintentos)
+# Validated generation (mock-aware, with grounding and retries)
 # ---------------------------------------------------------------------------
 def generate(
     spec: PromptSpec,
@@ -96,11 +96,11 @@ def generate(
     mock_kwargs: dict | None = None,
     grounding_query: str = "",
 ):
-    """Ejecuta un PromptSpec end-to-end y devuelve la entidad validada.
+    """Runs a PromptSpec end-to-end and returns the validated entity.
 
-    - Inyecta grounding de Foundry IQ.
-    - Si el transporte es mock (o el modelo falla), usa el fixture del spec.
-    - Valida SIEMPRE contra el marshmallow schema (asi el mock tambien se valida).
+    - Injects Foundry IQ grounding.
+    - If the transport is mock (or the model fails), uses the spec's fixture.
+    - ALWAYS validates against the marshmallow schema (so the mock is also validated).
     """
     build_kwargs = dict(build_kwargs or {})
     mock_kwargs = dict(mock_kwargs or {})
@@ -117,20 +117,20 @@ def generate(
                 raw = extract_json(text)
                 return spec.validate(raw)
             except LLMUnavailable as exc:
-                logger.warning("LLM no disponible para %s: %s -> uso mock", spec.name, exc)
+                logger.warning("LLM unavailable for %s: %s -> using mock", spec.name, exc)
                 raw = None
                 break
-            except Exception as exc:  # noqa: BLE001 - JSON invalido / validacion
-                logger.warning("Salida invalida de %s (intento %d): %s", spec.name, attempt, exc)
+            except Exception as exc:  # noqa: BLE001 - invalid JSON / validation
+                logger.warning("Invalid output from %s (attempt %d): %s", spec.name, attempt, exc)
                 raw = None
 
-    # Camino mock / fallback.
+    # Mock / fallback path.
     raw = spec.mock(*mock_args, **mock_kwargs)
     return spec.validate(raw)
 
 
 # ---------------------------------------------------------------------------
-# Prompt AUTOMATIZADO: definiciones de grupos de audiencia variados
+# AUTOMATED prompt: definitions of varied audience groups
 # ---------------------------------------------------------------------------
 def top_ethnicities(location_stats: dict | None, n: int = 3) -> list[str]:
     dist = (location_stats or {}).get("ethnicity_distribution") or {}
@@ -145,11 +145,11 @@ def build_varied_group_definitions(
     location_id: str | None = None,
     max_groups: int = 12,
 ) -> list[dict]:
-    """Genera, de forma AUTOMATICA, combinaciones diversas de factores.
+    """Generates, AUTOMATICALLY, diverse combinations of factors.
 
-    Varia genero x income/clase x edad x etnia x campo para cubrir un abanico
-    representativo (no el producto cartesiano completo). Las etnias salen de la
-    distribucion REAL de la ubicacion.
+    Varies gender x income/class x age x ethnicity x field to cover a
+    representative spread (not the full cartesian product). The ethnicities come from the
+    REAL distribution of the location.
     """
     genders = ["male", "female", "non_binary"]
     incomes = list(INCOME_BRACKETS)              # low, lower_middle, middle, upper_middle, high
@@ -180,14 +180,14 @@ def build_varied_group_definitions(
 
 
 # ---------------------------------------------------------------------------
-# Agregacion de scores (rangos promedio de reaccion)
+# Score aggregation (average reaction ranges)
 # ---------------------------------------------------------------------------
 def summarize_scores(group_profiles: list[dict]) -> dict:
-    """Resume los scores de la audiencia: por metrica, el rango promedio.
+    """Summarizes the audience scores: per metric, the average range.
 
-    Devuelve {metric: {expected_avg, min, max, n}} a partir de los
-    behavior_ranges de todos los grupos. Es la vista de "scores de rangos
-    promedio de reacciones" de la ubicacion.
+    Returns {metric: {expected_avg, min, max, n}} from the
+    behavior_ranges of all groups. It is the location's view of "average
+    reaction range scores".
     """
     agg: dict[str, dict] = {}
     for profile in group_profiles:
@@ -219,7 +219,7 @@ def summarize_scores(group_profiles: list[dict]) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Procesar UNA ubicacion
+# Process ONE location
 # ---------------------------------------------------------------------------
 def _location_view(location: dict) -> tuple[dict, str, str | None]:
     stats = location.get("statistics") or {}
@@ -235,12 +235,12 @@ def process_location(
     max_groups: int = 12,
     persist: bool = True,
 ) -> dict:
-    """Genera el set completo de audiencia sintetica para una ubicacion."""
+    """Generates the complete synthetic audience set for a location."""
     stats, label, location_id = _location_view(location)
     zip_code = location.get("zip_code") or "unknown"
-    logger.info("Procesando %s (zip %s)...", label or zip_code, zip_code)
+    logger.info("Processing %s (zip %s)...", label or zip_code, zip_code)
 
-    # 1) Modelo estadistico de comportamiento.
+    # 1) Statistical behavior model.
     behavior_model = generate(
         BEHAVIOR_MODEL_PROMPT,
         client=client,
@@ -249,10 +249,10 @@ def process_location(
         build_args=(stats,),
         build_kwargs={"location_label": label},
         mock_args=(stats,),
-        grounding_query=f"comportamiento digital poblacion {label}",
+        grounding_query=f"digital behavior population {label}",
     )
 
-    # 2) Grupos por campo/tema.
+    # 2) Groups by field/topic.
     field_groups = generate(
         FIELD_GROUPS_PROMPT,
         client=client,
@@ -261,10 +261,10 @@ def process_location(
         build_args=(stats,),
         build_kwargs={"location_label": label},
         mock_args=(stats,),
-        grounding_query=f"audiencias por campo {label}",
+        grounding_query=f"audiences by field {label}",
     )
 
-    # 3) Grupos variados (prompt automatizado) -> perfiles con rangos/scores.
+    # 3) Varied groups (automated prompt) -> profiles with ranges/scores.
     definitions = build_varied_group_definitions(stats, location_id=location_id, max_groups=max_groups)
     group_profiles = []
     for definition in definitions:
@@ -281,7 +281,7 @@ def process_location(
         )
         group_profiles.append(profile)
 
-    # 4) Spec consolidada + scores agregados.
+    # 4) Consolidated spec + aggregated scores.
     spec = {
         "zip_code": zip_code,
         "location_id": location_id,
@@ -302,14 +302,14 @@ def process_location(
         save_processor_output("group_profiles", zip_code, group_profiles)
         save_audience_specs(zip_code, spec)
         logger.info(
-            "Persistido zip %s: %d field groups, %d audience groups",
+            "Persisted zip %s: %d field groups, %d audience groups",
             zip_code, len(field_groups), len(group_profiles),
         )
     return spec
 
 
 # ---------------------------------------------------------------------------
-# Entry point del pipeline
+# Pipeline entry point
 # ---------------------------------------------------------------------------
 def run(
     *,
@@ -318,15 +318,15 @@ def run(
     transport: str = "",
     persist: bool = True,
 ) -> list[dict]:
-    """Procesa las ubicaciones persistidas por el data_ingestor."""
+    """Processes the locations persisted by the data_ingestor."""
     client = LlamaClient(transport=transport)
     foundry = FoundryIQ()
 
     locations = load_locations()
     if not locations:
         logger.warning(
-            "No hay ubicaciones persistidas. Corre primero el data_ingestor "
-            "(python -m data_ingestor.main) para poblar data_ingestor/data/locations/."
+            "No persisted locations. Run the data_ingestor first "
+            "(python -m data_ingestor.main) to populate data_ingestor/data/locations/."
         )
         return []
 
@@ -334,7 +334,7 @@ def run(
         locations = locations[:limit]
 
     logger.info(
-        "Transporte LLM=%s | Foundry IQ remoto=%s | %d ubicaciones",
+        "LLM transport=%s | Foundry IQ remote=%s | %d locations",
         client.transport, foundry.enabled, len(locations),
     )
 
@@ -342,9 +342,9 @@ def run(
     for location in locations:
         try:
             specs.append(process_location(location, client=client, foundry=foundry, max_groups=max_groups, persist=persist))
-        except Exception as exc:  # noqa: BLE001 - no abortar todo por una ubicacion
-            logger.exception("Fallo procesando %s: %s", location.get("zip_code"), exc)
-    logger.info("Pipeline finalizado: %d ubicaciones procesadas.", len(specs))
+        except Exception as exc:  # noqa: BLE001 - do not abort everything for one location
+            logger.exception("Failed processing %s: %s", location.get("zip_code"), exc)
+    logger.info("Pipeline finished: %d locations processed.", len(specs))
     return specs
 
 

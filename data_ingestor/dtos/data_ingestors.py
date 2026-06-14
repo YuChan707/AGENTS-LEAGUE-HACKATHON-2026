@@ -1,14 +1,13 @@
-import uuid
 
 from marshmallow import Schema, fields, validate, post_load
 
-#     Data Ingestor es donde se va a extraer la data que se necesita y se va a almacenar en las
-# entidades necesarias para luego integrarlas al data processor.
-#   - Data CRUDA  : se extrae de Data Commons (estadistica real por ubicacion, foco en NY, USA).
-#   - Data SINTETICA ($$): se genera con ayuda de LLMs a partir de la data cruda.
+#     Data Ingestor is where the needed data is extracted and stored in the
+# entities required to later integrate them into the data processor.
+#   - RAW Data  : extracted from Data Commons (real statistics per location, focus on NY, USA).
+#   - SYNTHETIC Data ($$): generated with the help of LLMs from the raw data.
 
 # ---------------------------------------------------------------------------
-# Vocabularios controlados (enums) para evitar precariedad / valores libres
+# Controlled vocabularies (enums) to avoid precariousness / free-form values
 # ---------------------------------------------------------------------------
 GENDERS = ("male", "female", "non_binary", "other")
 EDUCATION_LEVELS = (
@@ -20,39 +19,39 @@ PARTICULARITY_DIMENSIONS = ("gender", "ethnicity", "income", "field")
 
 
 def percentage():
-    """Float 0-100 reutilizable para tasas (unemployment, poverty, etc.)."""
+    """Reusable Float 0-100 for rates (unemployment, poverty, etc.)."""
     return fields.Float(required=True, validate=validate.Range(min=0, max=100))
 
 
 # ===========================================================================
-# DATA CRUDA  (Data Commons)
+# RAW DATA  (Data Commons)
 # ===========================================================================
-# Rango etario reutilizable (un rango NO es un solo numero)
+# Reusable age range (a range is NOT a single number)
 class AgeRange(Schema):
     min_age = fields.Integer(required=True, validate=validate.Range(min=0, max=120))
     max_age = fields.Integer(required=True, validate=validate.Range(min=0, max=120))
 
 
-# Punto geografico simple (centroide del lugar)
+# Simple geographic point (centroid of the place)
 class GeoPoint(Schema):
     latitude = fields.Float(required=True, validate=validate.Range(min=-90, max=90))
     longitude = fields.Float(required=True, validate=validate.Range(min=-180, max=180))
 
 
-# Metadata estadistica de una ubicacion: la separamos de la identidad para que
-# cada bloque tenga responsabilidad unica y sea facil de nestear/versionar.
+# Statistical metadata of a location: we separate it from the identity so that
+# each block has a single responsibility and is easy to nest/version.
 class LocationStatistics(Schema):
-    unemployment_rate = percentage()      # % de desempleo
-    poverty_rate = percentage()           # % bajo linea de pobreza
-    cost_of_living_index = fields.Float(required=True)   # indice (100 = media nacional)
-    median_income = fields.Integer(required=True)        # ingreso mediano anual (USD)
-    avg_household_size = fields.Float(required=True)      # tamano medio del hogar
+    unemployment_rate = percentage()      # % unemployment
+    poverty_rate = percentage()           # % below poverty line
+    cost_of_living_index = fields.Float(required=True)   # index (100 = national average)
+    median_income = fields.Integer(required=True)        # annual median income (USD)
+    avg_household_size = fields.Float(required=True)      # average household size
     safety_index = fields.Float(required=True, validate=validate.Range(min=0, max=100))
     avg_education= fields.Float(required=True)
     avg_female_population = fields.Float(required=True, validate=validate.Range(min=0, max=100))
-    avg_male_population = fields.Float(required=True, validate=validate.Range(min=0, max=100))  
-    age_ranges = fields.Dict(keys=fields.String(), values=fields.Float(validate=validate.Range(min=0, max=100)))  # %  de edades
-    ethnicity_distribution = fields.Dict(keys=fields.String(), values=fields.Float(validate=validate.Range(min=0, max=100)))  # % por etnia
+    avg_male_population = fields.Float(required=True, validate=validate.Range(min=0, max=100))
+    age_ranges = fields.Dict(keys=fields.String(), values=fields.Float(validate=validate.Range(min=0, max=100)))  # %  of ages
+    ethnicity_distribution = fields.Dict(keys=fields.String(), values=fields.Float(validate=validate.Range(min=0, max=100)))  # % by ethnicity
 
 
 class LocationEntity:
@@ -60,13 +59,13 @@ class LocationEntity:
         for key, value in kwargs.items():
             setattr(self, key, value)
 
-# Demographics Info  (identidad de la ubicacion)
+# Demographics Info  (location identity)
 class Location(Schema):
     class Meta:
         ordered = True
 
     location_id = fields.UUID(required=True)
-    coordinates = fields.Nested(GeoPoint, required=True, allow_none=True)  # Centroide del sitio
+    coordinates = fields.Nested(GeoPoint, required=True, allow_none=True)  # Centroid of the site
     zip_code = fields.String(required=True, allow_none=True)
     country = fields.String(required=True)
     state = fields.String(required=True)
@@ -74,25 +73,25 @@ class Location(Schema):
     total_population = fields.Integer(required=True)
     last_updated = fields.Date()
 
-    # Metadata estadistica (nested, no aplanada)
+    # Statistical metadata (nested, not flattened)
     statistics = fields.Nested(LocationStatistics, required=False)
 
-    # Procedencia de la data cruda
+    # Provenance of the raw data
 
     @post_load
     def make_location(self, data, **kwargs):
         return LocationEntity(**data)
 
-# Grupo demografico extraido de la data cruda
+# Demographic group extracted from the raw data
 class DemographicGroup(Schema):
     class Meta:
         ordered = True
 
     group_id = fields.UUID(required=True)
     group_name = fields.String(required=True)
-    location_id = fields.UUID(required=True)             # referencia a Location (no nested completo)
+    location_id = fields.UUID(required=True)             # reference to Location (not full nested)
 
-    # Atributos demograficos
+    # Demographic attributes
     age_range = fields.Nested(AgeRange, required=True)
     gender = fields.String(validate=validate.OneOf(GENDERS))
     ethnicity = fields.String()
@@ -100,38 +99,38 @@ class DemographicGroup(Schema):
     income_bracket = fields.String(validate=validate.OneOf(INCOME_BRACKETS))
     median_income = fields.Integer()
 
-    # Tamano del grupo
+    # Group size
     population_size = fields.Integer(required=True, validate=validate.Range(min=0))
-    population_share = fields.Float(validate=validate.Range(min=0, max=1))  # proporcion dentro de la location
+    population_share = fields.Float(validate=validate.Range(min=0, max=1))  # proportion within the location
 
 
 # ===========================================================================
-# FILTROS ESPECIFICOS  ($$ Data Sintetica)
+# SPECIFIC FILTERS  ($$ Synthetic Data)
 # ===========================================================================
 
-# Particularidad de un segmento, parametrica por "dimension".
-# Reemplaza las antiguas Gender/Ethnicity/Income/FieldParticularities en una sola entidad.
+# Particularity of a segment, parametric by "dimension".
+# Replaces the old Gender/Ethnicity/Income/FieldParticularities into a single entity.
 class SegmentParticularity(Schema):
     class Meta:
         ordered = True
 
     particularity_id = fields.UUID(required=True)
     dimension = fields.String(required=True, validate=validate.OneOf(PARTICULARITY_DIMENSIONS))
-    label = fields.String(required=True)                 # ej: "female", "latino", "middle", "tech"
-    description = fields.String(required=True)           # explicacion generada por la LLM
+    label = fields.String(required=True)                 # e.g.: "female", "latino", "middle", "tech"
+    description = fields.String(required=True)           # explanation generated by the LLM
 
-    # Atributos libres segun la dimension (ej: cultural_values, price_sensitivity, jargon_tolerance...)
+    # Free attributes depending on the dimension (e.g.: cultural_values, price_sensitivity, jargon_tolerance...)
     attributes = fields.Dict(keys=fields.String(), values=fields.Raw())
-    traits = fields.List(fields.String())                # rasgos clave en lenguaje natural
+    traits = fields.List(fields.String())                # key traits in natural language
 
-    generated_by = fields.String(load_default="llm")     # trazabilidad de data sintetica
+    generated_by = fields.String(load_default="llm")     # traceability of synthetic data
 
 
 # ===========================================================================
-# CONSUMIDORES ONLINE  ($$ Data Sintetica)
+# ONLINE CONSUMERS  ($$ Synthetic Data)
 # ===========================================================================
 
-# Grupo psicografico: valores, intereses, estilo de vida, actitudes.
+# Psychographic group: values, interests, lifestyle, attitudes.
 class PsychographicGroup(Schema):
     class Meta:
         ordered = True
@@ -149,7 +148,7 @@ class PsychographicGroup(Schema):
     generated_by = fields.String(load_default="llm")
 
 
-# Grupo conductual: como se comportan online (basado en el conocimiento general de la LLM).
+# Behavioral group: how they behave online (based on the LLM's general knowledge).
 class BehavioralGroup(Schema):
     class Meta:
         ordered = True
@@ -161,7 +160,7 @@ class BehavioralGroup(Schema):
     content_format_preferences = fields.List(fields.String())
     peak_activity_hours = fields.List(fields.Integer(validate=validate.Range(min=0, max=23)))
     avg_session_minutes = fields.Float(validate=validate.Range(min=0))
-    engagement_style = fields.String()                      # ej: "lurker", "creator", "sharer"
+    engagement_style = fields.String()                      # e.g.: "lurker", "creator", "sharer"
     price_sensitivity = fields.Float(validate=validate.Range(min=0, max=1))
     sharing_propensity = fields.Float(validate=validate.Range(min=0, max=1))
 
