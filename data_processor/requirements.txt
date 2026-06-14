@@ -1,0 +1,4 @@
+marshmallow
+httpx
+dapr
+python-dotenv

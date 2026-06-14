@@ -22,9 +22,11 @@ PARTICULARITY_DIMENSIONS = ("gender", "ethnicity", "income", "field")
 # Vocabularios para el MODELADO ESTADISTICO del comportamiento ($$ sintetico)
 # ---------------------------------------------------------------------------
 # Campos/dominios con comportamiento caracteristico (grupos por separado).
+# Tecnologia, Educacion, Entretenimiento y Salud son los representantes
+# principales cuando el usuario quiere la reaccion de un publico de un campo.
 FIELD_DOMAINS = (
     "technology", "education", "finance",
-    "politics", "entertainment", "family",
+    "politics", "entertainment", "family", "health",
 )
 
 # Factores demograficos que MODULAN el comportamiento (las "variables" del modelo).

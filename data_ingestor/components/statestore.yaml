@@ -1,0 +1,20 @@
+# State store Dapr -> PostgreSQL para PERSISTIR la data en base de datos.
+#
+# El data_ingestor guarda cada Location (por zip_code) como un item de estado:
+#   client.save_state("statestore", zip_code, json_de_la_location)
+#
+# La cadena de conexion sale del entorno (DATABASE_URL, ver containers_env/.env.example).
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: statestore
+spec:
+  type: state.postgresql
+  version: v1
+  metadata:
+    - name: connectionString
+      value: "{env:DATABASE_URL}"
+    - name: tableName
+      value: "ingestor_locations"
+    - name: keyPrefix
+      value: "name"            # prefija las keys con el app-id (aisla por servicio)

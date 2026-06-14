@@ -1,0 +1,20 @@
+# State store Dapr -> PostgreSQL para PERSISTIR la audiencia sintetica en BD.
+#
+# El data_processor guarda las specs de audiencia (por zip_code) como estado:
+#   client.save_state("statestore", zip_code, json_de_la_audience_spec)
+#
+# La cadena de conexion sale del entorno (DATABASE_URL, ver containers_env/.env.example).
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: statestore
+spec:
+  type: state.postgresql
+  version: v1
+  metadata:
+    - name: connectionString
+      value: "{env:DATABASE_URL}"
+    - name: tableName
+      value: "processor_audience_specs"
+    - name: keyPrefix
+      value: "name"

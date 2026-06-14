@@ -1,0 +1,20 @@
+# State store Dapr -> PostgreSQL para PERSISTIR el estado del backend en BD.
+#
+# El backend guarda estado de sesiones / resultados como items de estado:
+#   client.save_state("statestore", session_id, json_de_la_sesion)
+#
+# La cadena de conexion sale del entorno (DATABASE_URL, ver containers_env/.env.example).
+apiVersion: dapr.io/v1alpha1
+kind: Component
+metadata:
+  name: statestore
+spec:
+  type: state.postgresql
+  version: v1
+  metadata:
+    - name: connectionString
+      value: "{env:DATABASE_URL}"
+    - name: tableName
+      value: "backend_sessions"
+    - name: keyPrefix
+      value: "name"
