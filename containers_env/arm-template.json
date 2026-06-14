@@ -1,0 +1,163 @@
+{
+    "$schema": "https://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+    "contentVersion": "1.0.0.0",
+    "parameters": {
+        "location": {
+            "defaultValue": "[resourceGroup().location]",
+            "type": "String",
+            "metadata": {
+                "description": "Location for all resources"
+            }
+        },
+        "functionAppName": {
+            "defaultValue": "func-onlooker-mcp",
+            "type": "String",
+            "metadata": {
+                "description": "Function App name (must be globally unique)"
+            }
+        },
+        "appInsightsName": {
+            "defaultValue": "appi-onlooker-mcp",
+            "type": "String",
+            "metadata": {
+                "description": "App Insights name"
+            }
+        },
+        "cosmosDbAccountName": {
+            "defaultValue": "cosmos-onlooker-mcp",
+            "type": "String",
+            "metadata": {
+                "description": "Cosmos DB Account name (must be globally unique)"
+            }
+        },
+        "cosmosDbDatabaseName": {
+            "defaultValue": "DevelopFast",
+            "type": "String",
+            "metadata": {
+                "description": "Cosmos DB Database Name"
+            }
+        },
+        "cosmosDbContainerName": {
+            "defaultValue": "Logs",
+            "type": "String",
+            "metadata": {
+                "description": "Cosmos DB Container Name"
+            }
+        },
+        "logAnalyticsName": {
+            "defaultValue": "log-onlooker-mcp",
+            "type": "String",
+            "metadata": {
+                "description": "Log Analytics Workspace name"
+            }
+        },
+        "hostingPlanName": {
+            "defaultValue": "hostingplan-onlooker-mcp",
+            "type": "String",
+            "metadata": {
+                "description": "Hosting plan name"
+            }
+        },
+        "storageAccountName": {
+            "defaultValue": "stonlookermcp",
+            "type": "String",
+            "metadata": {
+                "description": "Storage Account Name (3-24 chars, lowercase letters and numbers only)"
+            }
+        },
+        "keyVaultName": {
+            "defaultValue": "kv-onlooker-mcp",
+            "type": "String",
+            "metadata": {
+                "description": "Key Vault name for storing OpenAI secrets (must be globally unique)"
+            }
+        },
+        "openAIAccountName": {
+            "defaultValue": "openai-onlooker-mcp",
+            "type": "String",
+            "metadata": {
+                "description": "Azure OpenAI Account Name (must be globally unique)"
+            }
+        },
+        "packageUri": {
+            "defaultValue": "https://maqagentstorage.blob.core.windows.net/develop-fast-mcp-packages/released-package-v0.1-cosmosdb/released-package.zip",
+            "type": "String",
+            "metadata": {
+                "description": "Package URI for the DevelopFast MCP deployment"
+            }
+        },
+        "applicationResourceName": {
+            "defaultValue": "a7a0ba1658364102b33ac3ebd017fba1",
+            "type": "String"
+        },
+        "managedResourceGroupId": {
+            "defaultValue": "",
+            "type": "String"
+        },
+        "managedIdentity": {
+            "defaultValue": {},
+            "type": "Object"
+        }
+    },
+    "variables": {
+        "managedResourceGroupId": "[if(empty(parameters('managedResourceGroupId')),concat(subscription().id,'/resourceGroups/',take(concat(resourceGroup().name,'-',uniquestring(resourceGroup().id),uniquestring(parameters('applicationResourceName'))),90)),parameters('managedResourceGroupId'))]"
+    },
+    "resources": [
+        {
+            "type": "Microsoft.Solutions/applications",
+            "apiVersion": "2021-07-01",
+            "name": "[parameters('applicationResourceName')]",
+            "location": "[resourceGroup().Location]",
+            "kind": "MarketPlace",
+            "identity": "[if(empty(parameters('managedIdentity')),json('null'),parameters('managedIdentity'))]",
+            "plan": {
+                "name": "developfastmcp_free_3",
+                "product": "developfastmcp",
+                "publisher": "maqsoftware",
+                "version": "1.1.0"
+            },
+            "properties": {
+                "managedResourceGroupId": "[variables('managedResourceGroupId')]",
+                "parameters": {
+                    "location": {
+                        "value": "[parameters('location')]"
+                    },
+                    "functionAppName": {
+                        "value": "[parameters('functionAppName')]"
+                    },
+                    "appInsightsName": {
+                        "value": "[parameters('appInsightsName')]"
+                    },
+                    "cosmosDbAccountName": {
+                        "value": "[parameters('cosmosDbAccountName')]"
+                    },
+                    "cosmosDbDatabaseName": {
+                        "value": "[parameters('cosmosDbDatabaseName')]"
+                    },
+                    "cosmosDbContainerName": {
+                        "value": "[parameters('cosmosDbContainerName')]"
+                    },
+                    "logAnalyticsName": {
+                        "value": "[parameters('logAnalyticsName')]"
+                    },
+                    "hostingPlanName": {
+                        "value": "[parameters('hostingPlanName')]"
+                    },
+                    "storageAccountName": {
+                        "value": "[parameters('storageAccountName')]"
+                    },
+                    "keyVaultName": {
+                        "value": "[parameters('keyVaultName')]"
+                    },
+                    "openAIAccountName": {
+                        "value": "[parameters('openAIAccountName')]"
+                    },
+                    "packageUri": {
+                        "value": "[parameters('packageUri')]"
+                    }
+                },
+                "jitAccessPolicy": null
+            }
+        }
+    ]
+}

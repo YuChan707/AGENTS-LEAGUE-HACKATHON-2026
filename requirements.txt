@@ -1,10 +1,43 @@
+# Web framework
+fastapi
+uvicorn[standard]
+websockets
 
+# Data ingestion + synthetic audience (data_ingestor + data_processor)
 marshmallow
-pydantic
 datacommons-client
-pandas
-httpx
-dapr
-tqdm
-python-dotenv
 census
+tqdm
+dapr
+
+# Database
+sqlalchemy[asyncio]
+asyncpg
+alembic
+aiosqlite
+
+# Vector database
+chromadb
+
+# Azure storage
+azure-storage-blob
+
+# AI / LLM
+groq
+openai
+
+# Document generation
+python-pptx
+python-docx
+pypdf
+python-multipart
+
+# Data processing
+pandas
+numpy
+httpx
+
+# Configuration
+pydantic
+pydantic-settings
+python-dotenv

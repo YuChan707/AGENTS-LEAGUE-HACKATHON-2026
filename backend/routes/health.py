@@ -1,15 +1,20 @@
-"""Health route.
+from fastapi import APIRouter
+from sqlalchemy import text
+from models.database import AsyncSessionLocal
 
-Exposes GET /health for liveness/readiness checks.
+router = APIRouter(tags=["health"])
 
-TODO (scaffold): create an APIRouter and return {"status": "ok"}.
-"""
+@router.get("/health")
+async def health():
+    try:
+        async with AsyncSessionLocal() as session:
+            await session.execute(text("SELECT 1"))
+        db_status = "connected"
+    except Exception as e:
+        db_status = f"error: {str(e)[:80]}"
 
-# from fastapi import APIRouter
-
-# router = APIRouter(tags=["health"])
-
-
-# @router.get("/health")
-# async def health():
-#     return {"status": "ok"}
+    return {
+        "status": "ok",
+        "version": "0.1.0",
+        "database": db_status
+    }

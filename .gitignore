@@ -72,6 +72,13 @@ data_ingestor/data/locations/
 # Conservar los CSV de entrada (zip codes NY)
 !data_ingestor/data/*.csv
 
+# Local DB files + extras (de imp/database) #
+#############################################
+*.db
+onlooker.db
+.gitignore.env
+*.pyo
+
 # OS generated files #
 ######################
 .DS_Store
