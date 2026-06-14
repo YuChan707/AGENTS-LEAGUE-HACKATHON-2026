@@ -26,15 +26,6 @@
                             associate | bachelor | master | doctorate
  INCOME_BRACKETS          : low | lower_middle | middle | upper_middle | high
  PARTICULARITY_DIMENSIONS : gender | ethnicity | income | field
- FIELD_DOMAINS            : technology | education | finance | politics |
-                            entertainment | family
- BEHAVIOR_FACTORS         : age | gender | ethnicity | income | education | field
- EFFECT_TYPES             : multiplier | additive | absolute
- COMBINATION_RULES        : multiplicative | additive | weighted_average
- BEHAVIOR_METRICS         : adoption_propensity | engagement_likelihood |
-                            retention_probability | churn_risk | sentiment_score |
-                            comprehension_score | trust_score | price_sensitivity |
-                            sharing_propensity | conversion_rate
 
 
 ==============================================================================
@@ -147,62 +138,6 @@
    generated_by                : String       trazabilidad (default "llm")
 
 
-==============================================================================
- MODELO ESTADISTICO DEL COMPORTAMIENTO  ($$ generado con LLM)
-   Expresa COMO cambia una metrica de comportamiento segun factores
-   demograficos, mediante formulas reproducibles (no solo valores planos).
-==============================================================================
-
-------------------------------------------------------------------------------
- FactorModifier
-------------------------------------------------------------------------------
- Efecto cuantificado de UN valor de UN factor sobre una metrica base.
-   factor         : Enum      BEHAVIOR_FACTORS
-   segment_value  : String    coherente con el factor (ej: "18-24","female","low")
-   effect_type    : Enum      EFFECT_TYPES
-   effect_value   : Float     1.35 (mult) | +0.12 (add) | 0.7 (abs)
-   weight         : Float     0-1 (si combination_rule = weighted_average)
-   rationale      : String    justificacion de la LLM (anclada en la data)
-   confidence     : Float     0-1
-
-------------------------------------------------------------------------------
- BehaviorFormula
-------------------------------------------------------------------------------
- Formula que predice UNA metrica: baseline + modificadores por factor.
-   formula_id       : UUID
-   metric           : Enum      BEHAVIOR_METRICS
-   baseline         : Float     valor de la poblacion de referencia
-   combination_rule : Enum      COMBINATION_RULES
-   modifiers        : List[Nested]  FactorModifier
-   expression       : String    formula reproducible y legible
-   output_min       : Float     default 0.0
-   output_max       : Float     default 1.0
-   sample_size      : Integer   n sintetico que respalda la estimacion
-   confidence       : Float     0-1
-   generated_by     : String    default "llm"
-
-------------------------------------------------------------------------------
- FieldBehaviorGroup
-------------------------------------------------------------------------------
- Grupo con comportamiento caracteristico de un CAMPO, con su propio modelo y
- su lente para evaluar un producto digital.
-   group_id                    : UUID
-   group_name                  : String
-   field_domain                : Enum         FIELD_DOMAINS
-   description                 : String
-   typical_age_range           : Nested       AgeRange
-   typical_income_bracket      : Enum         INCOME_BRACKETS
-   dominant_values             : List[Str]
-   preferred_platforms         : List[Str]
-   content_format_preferences  : List[Str]
-   decision_drivers            : List[Str]    que pesa al decidir adoptar
-   objections                  : List[Str]    frenos / razones de rechazo
-   jargon_tolerance            : Float        0-1
-   product_evaluation_criteria : List[Str]    su lente al juzgar el producto
-   behavior_formulas           : List[Nested] BehaviorFormula
-   generated_by                : String       default "llm"
-
-
 ##############################################################################
 # 2) DATA PROCESSORS  (dtos/data_processors.py) - ENTIDADES DE SALIDA
 ##############################################################################
@@ -251,9 +186,6 @@
    comprehension_score    : Float        comprension (0-1)
    cultural_fit_score     : Float        encaje cultural (0-1)
    engagement_likelihood  : Float        probabilidad de engagement (0-1)
-   metric_scores          : Dict         {BEHAVIOR_METRICS: float 0-1} calculadas
-   factor_attribution     : Dict         {factor: aporte +/-} explicabilidad
-   applied_formula_ids    : List[UUID]   BehaviorFormula usadas (trazabilidad)
    strengths              : List[Str]    que funciona bien
    risks                  : List[Str]    que puede fallar / ofender / confundir
    recommendations        : List[Str]    como mejorarlo para este segmento

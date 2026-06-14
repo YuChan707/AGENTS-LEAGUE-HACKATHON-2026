@@ -62,18 +62,6 @@ class ReactionProfile(Schema):
     cultural_fit_score = fields.Float(required=True, validate=validate.Range(min=0, max=1))
     engagement_likelihood = fields.Float(required=True, validate=validate.Range(min=0, max=1))
 
-    # Metricas de comportamiento calculadas (claves = BEHAVIOR_METRICS de
-    # data_ingestors). Permite ir mas alla de los 4 scores fijos de arriba.
-    metric_scores = fields.Dict(
-        keys=fields.String(),
-        values=fields.Float(validate=validate.Range(min=0, max=1)),
-    )
-    # Atribucion: cuanto aporto cada factor (edad/genero/etnia/income...) a la
-    # reaccion. Hace explicable el resultado. Ej: {"income": -0.18, "age": +0.07}
-    factor_attribution = fields.Dict(keys=fields.String(), values=fields.Float())
-    # Trazabilidad al modelo estadistico: que BehaviorFormula se aplicaron.
-    applied_formula_ids = fields.List(fields.UUID())
-
     # Feedback cualitativo accionable
     strengths = fields.List(fields.String())             # que funciona bien
     risks = fields.List(fields.String())                 # que puede fallar / ofender / confundir

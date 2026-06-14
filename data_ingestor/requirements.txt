@@ -7,4 +7,4 @@ httpx
 dapr
 tqdm
 python-dotenv
-census
+census==0.8.20
